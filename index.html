@@ -12,119 +12,137 @@
 
 <style>
   :root {
-    --glass-bg: rgba(255, 255, 255, 0.08);
-    --glass-border: rgba(255, 255, 255, 0.15);
     --ios-blue: #0A84FF;
+    --ios-blue-glow: rgba(10, 132, 255, 0.4);
     --ios-green: #30D158;
+    --ios-green-glow: rgba(48, 209, 88, 0.4);
     --ios-red: #FF453A;
+    --glass-bg: rgba(30, 30, 35, 0.6);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-highlight: rgba(255, 255, 255, 0.05);
     --text-main: #FFFFFF;
-    --text-muted: rgba(235, 235, 245, 0.6);
+    --text-muted: #EBEBF599;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   
   body {
-    background: radial-gradient(circle at 15% 50%, #200b45, #000000 60%), radial-gradient(circle at 85% 30%, #00283a, #000000 70%);
     background-color: #000;
     color: var(--text-main);
     min-height: 100vh;
-    padding: 30px 15px;
     display: flex;
     flex-direction: column;
     align-items: center;
+    padding: 30px 20px;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* ══ ANIMATED BACKGROUND ORBS ══ */
+  .bg-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    z-index: -1;
+    opacity: 0.5;
+    animation: floatOrb 12s infinite alternate ease-in-out;
+  }
+  .orb-1 { width: 350px; height: 350px; background: #8400ff; top: -100px; left: -100px; }
+  .orb-2 { width: 300px; height: 300px; background: #0A84FF; bottom: 50px; right: -100px; animation-delay: -5s; }
+  .orb-3 { width: 200px; height: 200px; background: #30D158; top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0.2; }
+
+  @keyframes floatOrb {
+    0% { transform: translateY(0px) scale(1); }
+    100% { transform: translateY(40px) scale(1.1); }
   }
 
   /* ══ HEADER ══ */
-  .header { text-align: center; margin-bottom: 30px; animation: fadeInDown 0.8s ease; }
-  .header h1 { font-size: 26px; font-weight: 800; letter-spacing: 0.5px; }
-  .header p { font-size: 13px; color: var(--ios-blue); font-weight: 600; letter-spacing: 1px; margin-top: 4px; text-transform: uppercase; }
+  .header { text-align: center; margin-bottom: 35px; animation: fadeInDown 0.8s ease; width: 100%; max-width: 420px; }
+  .header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
+  .header p { font-size: 13px; color: var(--text-muted); font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; }
 
-  /* ══ GLASS CARDS ══ */
+  /* ══ PREMIUM GLASS CARDS ══ */
   .glass-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(25px);
-    -webkit-backdrop-filter: blur(25px);
-    border: 1px solid var(--glass-border);
-    border-radius: 24px;
-    padding: 24px;
+    backdrop-filter: blur(35px);
+    -webkit-backdrop-filter: blur(35px);
+    border: 1.5px solid var(--glass-border);
+    border-radius: 28px;
+    padding: 26px;
     width: 100%;
-    max-width: 400px;
-    margin-bottom: 24px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    max-width: 420px;
+    margin-bottom: 25px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
     animation: fadeInUp 0.8s ease;
   }
   
   .card-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--text-muted);
-    margin-bottom: 20px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 22px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card-icon {
+    width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
   }
 
-  /* ══ IOS SEGMENTED CONTROL (AUTO / MANUAL) ══ */
+  /* ══ IOS SEGMENTED CONTROL ══ */
   .segmented-control {
-    display: flex;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    padding: 3px;
-    margin-bottom: 20px;
-    position: relative;
+    display: flex; background: rgba(0, 0, 0, 0.4); border-radius: 12px; padding: 4px;
+    margin-bottom: 22px; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
   }
   .segmented-control input { display: none; }
   .segmented-control label {
-    flex: 1; text-align: center; padding: 10px 0; font-size: 13px; font-weight: 600;
+    flex: 1; text-align: center; padding: 12px 0; font-size: 13px; font-weight: 600;
     color: var(--text-muted); cursor: pointer; transition: 0.3s; z-index: 2;
   }
   .segmented-control input:checked + label { color: #fff; }
   .slider {
-    position: absolute; top: 3px; left: 3px; height: calc(100% - 6px); width: calc(50% - 3px);
-    background: rgba(255, 255, 255, 0.15); border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: 0.3s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1;
+    position: absolute; top: 4px; left: 4px; height: calc(100% - 8px); width: calc(50% - 4px);
+    background: rgba(255, 255, 255, 0.2); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.3); transition: 0.35s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1;
   }
   #modeManual:checked ~ .slider { transform: translateX(100%); }
 
   /* ══ INPUTS ══ */
-  .input-group { margin-bottom: 16px; }
-  .input-group label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; margin-left: 4px; font-weight: 500; }
-  .live-tag { color: var(--ios-green); font-size: 10px; font-weight: 700; animation: pulseDot 1s infinite alternate; }
+  .input-group { margin-bottom: 18px; }
+  .input-group label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 10px; margin-left: 6px; font-weight: 500; }
+  .live-tag { color: var(--ios-green); font-size: 10px; font-weight: 700; background: rgba(48,209,88,0.15); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(48,209,88,0.3); animation: pulseTag 1.5s infinite alternate; }
   
   input, select {
-    width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--glass-border); color: #fff; border-radius: 14px;
-    font-size: 16px; transition: 0.3s; outline: none; appearance: none;
+    width: 100%; padding: 16px 18px; background: rgba(0, 0, 0, 0.3);
+    border: 1.5px solid var(--glass-border); color: #fff; border-radius: 16px;
+    font-size: 16px; font-weight: 600; transition: 0.3s; outline: none; appearance: none;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
   }
-  input:focus, select:focus { border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.1); }
-  select { background-image: url('data:image/svg+xml;utf8,<svg fill="%23FFFFFF" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position-x: 95%; background-position-y: 50%; }
+  input:focus, select:focus { border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.08); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15); }
+  
+  select { background-image: url('data:image/svg+xml;utf8,<svg fill="%23FFFFFF" height="24" viewBox="0 0 24 24" width="24" opacity="0.6" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position-x: 95%; background-position-y: 50%; }
   select option { background: #1c1c1e; color: #fff; }
 
   /* ══ BUTTONS ══ */
   .ios-btn {
-    width: 100%; padding: 16px; background: var(--ios-blue); border: none; color: #fff;
-    font-size: 16px; font-weight: 600; border-radius: 14px; cursor: pointer;
-    box-shadow: 0 4px 15px rgba(10, 132, 255, 0.4); transition: 0.2s; margin-top: 10px;
+    width: 100%; padding: 18px; background: linear-gradient(180deg, #1C93FF, var(--ios-blue));
+    border: 1px solid rgba(255,255,255,0.2); border-top: 1px solid rgba(255,255,255,0.4);
+    color: #fff; font-size: 16px; font-weight: 700; border-radius: 16px; cursor: pointer;
+    box-shadow: 0 8px 20px var(--ios-blue-glow); transition: 0.2s cubic-bezier(0.25, 1, 0.5, 1); margin-top: 10px;
   }
-  .ios-btn:active { transform: scale(0.97); opacity: 0.8; }
-  .ios-btn.green { background: var(--ios-green); box-shadow: 0 4px 15px rgba(48, 209, 88, 0.3); }
+  .ios-btn:active { transform: scale(0.96); box-shadow: 0 4px 10px var(--ios-blue-glow); }
+  .ios-btn.green { background: linear-gradient(180deg, #3EE167, var(--ios-green)); box-shadow: 0 8px 20px var(--ios-green-glow); }
 
   /* ══ TOAST NOTIFICATION ══ */
   #toast {
     position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
-    background: rgba(48, 209, 88, 0.2); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(48, 209, 88, 0.4); padding: 14px 24px; border-radius: 30px;
-    font-size: 13px; font-weight: 600; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    transition: top 0.4s cubic-bezier(0.25, 1, 0.5, 1); z-index: 9999; display: flex; align-items: center; gap: 10px;
+    background: rgba(30, 30, 35, 0.85); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+    border: 1px solid rgba(255,255,255,0.1); padding: 14px 24px; border-radius: 30px;
+    font-size: 14px; font-weight: 600; color: #fff; box-shadow: 0 15px 30px rgba(0,0,0,0.4);
+    transition: top 0.4s cubic-bezier(0.25, 1, 0.5, 1); z-index: 9999; display: flex; align-items: center; gap: 12px;
   }
   #toast.show { top: 40px; }
-  #toast.error { background: rgba(255, 69, 58, 0.2); border-color: rgba(255, 69, 58, 0.4); }
-  .toast-icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; background: var(--ios-green); color: #000; }
-  #toast.error .toast-icon { background: var(--ios-red); color: #fff; }
+  .toast-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; background: var(--ios-green); color: #000; box-shadow: 0 0 10px var(--ios-green); }
+  #toast.error .toast-icon { background: var(--ios-red); color: #fff; box-shadow: 0 0 10px var(--ios-red); }
 
-  @keyframes pulseDot { 0% { transform: scale(0.95); opacity: 0.7; } 100% { transform: scale(1.05); opacity: 1; } }
+  @keyframes pulseTag { 0% { opacity: 0.7; box-shadow: 0 0 0 rgba(48,209,88,0); } 100% { opacity: 1; box-shadow: 0 0 8px rgba(48,209,88,0.6); } }
   @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -132,43 +150,47 @@
 </head>
 <body>
 
+  <!-- BACKGROUND ORBS -->
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+
   <!-- TOAST ALERTS -->
   <div id="toast"><div class="toast-icon" id="toastIcon">✓</div><span id="toastMsg">Updated Successfully</span></div>
 
   <div class="header">
     <h1>ZAYRO CORE</h1>
-    <p>System Controller</p>
+    <p>Admin Control Center</p>
   </div>
 
   <!-- SECTION 1: LIVE GAME PREDICTION -->
   <div class="glass-card">
-    <div class="card-title">🚀 Signal Injector</div>
+    <div class="card-title"><div class="card-icon">🚀</div> Live Injector</div>
     
     <!-- MODE TOGGLE -->
     <div class="segmented-control">
       <input type="radio" name="mode" id="modeAuto" value="auto">
-      <label for="modeAuto" onclick="updateMode('auto')">Auto Mode</label>
+      <label for="modeAuto" onclick="updateMode('auto')">Auto Engine</label>
       
       <input type="radio" name="mode" id="modeManual" value="manual" checked>
-      <label for="modeManual" onclick="updateMode('manual')">Manual Wait</label>
+      <label for="modeManual" onclick="updateMode('manual')">Manual Override</label>
       
       <div class="slider"></div>
     </div>
 
     <div class="input-group">
-      <!-- Label me -1 update kar diya -->
-      <label>Target Period <span class="live-tag">● LIVE SYNC (-1)</span></label>
-      <input type="number" id="periodInput" placeholder="Fetching Live Period..." style="color:var(--ios-green); font-weight:bold;">
+      <label>Target Period <span class="live-tag">● SYNCED (-1)</span></label>
+      <input type="number" id="periodInput" placeholder="Fetching System Data..." style="color:var(--ios-green); text-shadow: 0 0 10px rgba(48,209,88,0.3);">
     </div>
 
     <div style="display: flex; gap: 15px;">
       <div class="input-group" style="flex: 1;">
-        <label>Result Number</label>
+        <label>Result</label>
         <select id="numberInput">
-          <option value="0">0</option><option value="1">1</option><option value="2">2</option>
-          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
-          <option value="6">6</option><option value="7">7</option><option value="8">8</option>
-          <option value="9">9</option>
+          <option value="0">Number 0</option><option value="1">Number 1</option><option value="2">Number 2</option>
+          <option value="3">Number 3</option><option value="4">Number 4</option><option value="5">Number 5</option>
+          <option value="6">Number 6</option><option value="7">Number 7</option><option value="8">Number 8</option>
+          <option value="9">Number 9</option>
         </select>
       </div>
 
@@ -181,12 +203,12 @@
       </div>
     </div>
 
-    <button class="ios-btn" onclick="savePrediction()">Push Live Signal</button>
+    <button class="ios-btn" onclick="savePrediction()">Push Signal</button>
   </div>
 
   <!-- SECTION 2: SYSTEM CONFIG -->
   <div class="glass-card">
-    <div class="card-title">⚙️ Global Settings</div>
+    <div class="card-title"><div class="card-icon">⚙️</div> Global Settings</div>
     
     <div class="input-group">
       <label>Registration URL</label>
@@ -213,7 +235,7 @@
       </div>
     </div>
 
-    <button class="ios-btn green" onclick="saveSystemConfig()">Save Configuration</button>
+    <button class="ios-btn green" onclick="saveSystemConfig()">Update System</button>
   </div>
 
 
@@ -253,7 +275,7 @@
     });
   }
 
-  // 🔴 AUTO LIVE PERIOD FETCHER (-1 LOGIC UPDATED)
+  // 🔴 AUTO LIVE PERIOD FETCHER (-1 LOGIC)
   let currentLivePeriod = null;
   async function fetchLiveAdminPeriod() {
     try {
@@ -276,7 +298,6 @@
     } catch (e) {}
   }
   
-  // Start fetching immediately, then every 2 seconds
   fetchLiveAdminPeriod();
   setInterval(fetchLiveAdminPeriod, 2000);
 
@@ -304,7 +325,7 @@
   // Auto/Manual Database Toggle
   function updateMode(mode) {
     database.ref('settings/app_config').update({ prediction_mode: mode })
-      .then(() => { showToast(`Mode Set To: ${mode.toUpperCase()}`); })
+      .then(() => { showToast(`System Mode: ${mode.toUpperCase()}`); })
       .catch((error) => { showToast("Error: " + error.message, true); });
   }
 
@@ -314,13 +335,13 @@
     const num = document.getElementById("numberInput").value;
     const size = document.getElementById("sizeInput").value;
 
-    if(!period) { showToast("Please Enter Period Number", true); return; }
+    if(!period) { showToast("Wait for Period Sync...", true); return; }
 
     database.ref('predictions/' + period).set({
       n: num,
       s: size
     }).then(() => {
-      showToast("Signal Pushed to App!");
+      showToast("Signal Pushed to Server!");
     }).catch((error) => {
       showToast("Error: " + error.message, true);
     });
@@ -340,7 +361,7 @@
     updates['login_block'] = (loginBlockStr === "true");
 
     database.ref('settings/app_config').update(updates)
-      .then(() => { showToast("System Configuration Saved"); })
+      .then(() => { showToast("Global Settings Applied"); })
       .catch((error) => { showToast("Error: " + error.message, true); });
   }
 </script>
