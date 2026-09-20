@@ -2,133 +2,223 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Control Panel</title>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>iOS VIP Controller</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <!-- FIREBASE SDK -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <style>
+  :root {
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --ios-blue: #0A84FF;
+    --ios-green: #30D158;
+    --ios-red: #FF453A;
+    --text-main: #FFFFFF;
+    --text-muted: rgba(235, 235, 245, 0.6);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+  
   body {
-    background: #0a0014;
-    color: #fff;
-    font-family: 'Rajdhani', sans-serif;
+    background: radial-gradient(circle at 15% 50%, #200b45, #000000 60%), radial-gradient(circle at 85% 30%, #00283a, #000000 70%);
+    background-color: #000;
+    color: var(--text-main);
+    min-height: 100vh;
+    padding: 30px 15px;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    height: 100vh;
-    margin: 0;
   }
-  .admin-box {
-    background: linear-gradient(170deg, #2b0057 0%, #0d001a 100%);
-    border: 2px solid #b44fff;
-    border-radius: 20px;
-    padding: 30px;
-    width: 90%;
+
+  /* ══ HEADER ══ */
+  .header { text-align: center; margin-bottom: 30px; animation: fadeInDown 0.8s ease; }
+  .header h1 { font-size: 26px; font-weight: 800; letter-spacing: 0.5px; }
+  .header p { font-size: 13px; color: var(--ios-blue); font-weight: 600; letter-spacing: 1px; margin-top: 4px; text-transform: uppercase; }
+
+  /* ══ GLASS CARDS ══ */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 24px;
+    width: 100%;
     max-width: 400px;
-    box-shadow: 0 0 30px rgba(180,79,255,0.4);
-    text-align: center;
+    margin-bottom: 24px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    animation: fadeInUp 0.8s ease;
   }
-  h2 {
-    font-family: 'Orbitron', sans-serif;
-    color: #00e88a;
-    text-shadow: 0 0 10px rgba(0,255,150,0.8);
-    margin-top: 0;
-  }
-  .input-group {
+  
+  .card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-muted);
     margin-bottom: 20px;
-    text-align: left;
-  }
-  label {
-    display: block;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 12px;
-    color: #d488ff;
-    margin-bottom: 5px;
+    text-transform: uppercase;
     letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
+
+  /* ══ IOS SEGMENTED CONTROL (AUTO / MANUAL) ══ */
+  .segmented-control {
+    display: flex;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    padding: 3px;
+    margin-bottom: 20px;
+    position: relative;
+  }
+  .segmented-control input { display: none; }
+  .segmented-control label {
+    flex: 1; text-align: center; padding: 10px 0; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); cursor: pointer; transition: 0.3s; z-index: 2;
+  }
+  .segmented-control input:checked + label { color: #fff; }
+  .slider {
+    position: absolute; top: 3px; left: 3px; height: calc(100% - 6px); width: calc(50% - 3px);
+    background: rgba(255, 255, 255, 0.15); border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: 0.3s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1;
+  }
+  #modeManual:checked ~ .slider { transform: translateX(100%); }
+
+  /* ══ INPUTS ══ */
+  .input-group { margin-bottom: 16px; }
+  .input-group label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; margin-left: 4px; font-weight: 500; }
+  .live-tag { color: var(--ios-green); font-size: 10px; font-weight: 700; animation: pulseDot 1s infinite alternate; }
+  
   input, select {
-    width: 100%;
-    padding: 12px;
-    background: rgba(0,0,0,0.5);
-    border: 1px solid #b44fff;
-    color: #fff;
-    border-radius: 8px;
-    font-size: 16px;
-    font-family: 'Rajdhani', sans-serif;
-    box-sizing: border-box;
+    width: 100%; padding: 16px; background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border); color: #fff; border-radius: 14px;
+    font-size: 16px; transition: 0.3s; outline: none; appearance: none;
   }
-  input:focus, select:focus {
-    outline: none;
-    box-shadow: 0 0 10px rgba(180,79,255,0.6);
+  input:focus, select:focus { border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.1); }
+  select { background-image: url('data:image/svg+xml;utf8,<svg fill="%23FFFFFF" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position-x: 95%; background-position-y: 50%; }
+  select option { background: #1c1c1e; color: #fff; }
+
+  /* ══ BUTTONS ══ */
+  .ios-btn {
+    width: 100%; padding: 16px; background: var(--ios-blue); border: none; color: #fff;
+    font-size: 16px; font-weight: 600; border-radius: 14px; cursor: pointer;
+    box-shadow: 0 4px 15px rgba(10, 132, 255, 0.4); transition: 0.2s; margin-top: 10px;
   }
-  button {
-    width: 100%;
-    padding: 15px;
-    background: linear-gradient(180deg, #8a2be2 0%, #4b0082 100%);
-    border: 1px solid #a633ff;
-    color: #fff;
-    font-family: 'Orbitron', sans-serif;
-    font-size: 16px;
-    font-weight: 900;
-    border-radius: 10px;
-    cursor: pointer;
-    box-shadow: 0 0 20px rgba(180,79,255,0.6);
-    transition: 0.2s;
+  .ios-btn:active { transform: scale(0.97); opacity: 0.8; }
+  .ios-btn.green { background: var(--ios-green); box-shadow: 0 4px 15px rgba(48, 209, 88, 0.3); }
+
+  /* ══ TOAST NOTIFICATION ══ */
+  #toast {
+    position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
+    background: rgba(48, 209, 88, 0.2); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(48, 209, 88, 0.4); padding: 14px 24px; border-radius: 30px;
+    font-size: 13px; font-weight: 600; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    transition: top 0.4s cubic-bezier(0.25, 1, 0.5, 1); z-index: 9999; display: flex; align-items: center; gap: 10px;
   }
-  button:active {
-    transform: scale(0.95);
-  }
-  .success-msg {
-    color: #00e88a;
-    margin-top: 15px;
-    font-weight: bold;
-    display: none;
-  }
+  #toast.show { top: 40px; }
+  #toast.error { background: rgba(255, 69, 58, 0.2); border-color: rgba(255, 69, 58, 0.4); }
+  .toast-icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; background: var(--ios-green); color: #000; }
+  #toast.error .toast-icon { background: var(--ios-red); color: #fff; }
+
+  @keyframes pulseDot { 0% { transform: scale(0.95); opacity: 0.7; } 100% { transform: scale(1.05); opacity: 1; } }
+  @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
 </style>
 </head>
 <body>
 
-<div class="admin-box">
-  <h2>HACK CONTROLLER</h2>
-  
-  <div class="input-group">
-    <label>PERIOD NUMBER</label>
-    <input type="number" id="periodInput" placeholder="Enter full period (e.g. 202609201234)">
+  <!-- TOAST ALERTS -->
+  <div id="toast"><div class="toast-icon" id="toastIcon">✓</div><span id="toastMsg">Updated Successfully</span></div>
+
+  <div class="header">
+    <h1>ZAYRO CORE</h1>
+    <p>System Controller</p>
   </div>
 
-  <div class="input-group">
-    <label>RESULT NUMBER (0-9)</label>
-    <select id="numberInput">
-      <option value="0">0</option>
-      <option value="1">1</option>
-      <option value="2">2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="5">5</option>
-      <option value="6">6</option>
-      <option value="7">7</option>
-      <option value="8">8</option>
-      <option value="9">9</option>
-    </select>
+  <!-- SECTION 1: LIVE GAME PREDICTION -->
+  <div class="glass-card">
+    <div class="card-title">🚀 Signal Injector</div>
+    
+    <!-- MODE TOGGLE -->
+    <div class="segmented-control">
+      <input type="radio" name="mode" id="modeAuto" value="auto">
+      <label for="modeAuto" onclick="updateMode('auto')">Auto Mode</label>
+      
+      <input type="radio" name="mode" id="modeManual" value="manual" checked>
+      <label for="modeManual" onclick="updateMode('manual')">Manual Wait</label>
+      
+      <div class="slider"></div>
+    </div>
+
+    <div class="input-group">
+      <!-- Label me -1 update kar diya -->
+      <label>Target Period <span class="live-tag">● LIVE SYNC (-1)</span></label>
+      <input type="number" id="periodInput" placeholder="Fetching Live Period..." style="color:var(--ios-green); font-weight:bold;">
+    </div>
+
+    <div style="display: flex; gap: 15px;">
+      <div class="input-group" style="flex: 1;">
+        <label>Result Number</label>
+        <select id="numberInput">
+          <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+          <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+          <option value="9">9</option>
+        </select>
+      </div>
+
+      <div class="input-group" style="flex: 1;">
+        <label>Size</label>
+        <select id="sizeInput">
+          <option value="BIG">BIG</option>
+          <option value="SMALL">SMALL</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="ios-btn" onclick="savePrediction()">Push Live Signal</button>
   </div>
 
-  <div class="input-group">
-    <label>SIZE (BIG / SMALL)</label>
-    <select id="sizeInput">
-      <option value="BIG">BIG</option>
-      <option value="SMALL">SMALL</option>
-    </select>
+  <!-- SECTION 2: SYSTEM CONFIG -->
+  <div class="glass-card">
+    <div class="card-title">⚙️ Global Settings</div>
+    
+    <div class="input-group">
+      <label>Registration URL</label>
+      <input type="text" id="regUrlInput" placeholder="https://...">
+    </div>
+
+    <div class="input-group">
+      <label>Deposit URL</label>
+      <input type="text" id="depUrlInput" placeholder="https://...">
+    </div>
+
+    <div style="display: flex; gap: 15px;">
+      <div class="input-group" style="flex: 1;">
+        <label>Min Deposit (₹)</label>
+        <input type="number" id="minDepInput" placeholder="e.g. 300">
+      </div>
+
+      <div class="input-group" style="flex: 1;">
+        <label>Login Barrier</label>
+        <select id="loginBlockInput">
+          <option value="true">ON (Block)</option>
+          <option value="false">OFF (Allow)</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="ios-btn green" onclick="saveSystemConfig()">Save Configuration</button>
   </div>
 
-  <button onclick="saveData()">UPDATE SERVER</button>
-  <div id="msg" class="success-msg">Data Saved Successfully! ✓</div>
-</div>
 
 <script>
-  // YAHAN APNA SAME FIREBASE CONFIG DAALNA HAI JO MAIN SCRIPT MEIN DAALA THA
+  // 🔴🔴 APNA FIREBASE CONFIG YAHAN PASTE KARO 🔴🔴
   const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
     authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -144,33 +234,114 @@
   }
   const database = firebase.database();
 
-  function saveData() {
+  // Load Existing Data
+  if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    database.ref('settings/app_config').once('value').then((snapshot) => {
+      if (snapshot.exists()) {
+        let data = snapshot.val();
+        if (data.register_url) document.getElementById('regUrlInput').value = data.register_url;
+        if (data.deposit_url) document.getElementById('depUrlInput').value = data.deposit_url;
+        if (data.min_deposit !== undefined) document.getElementById('minDepInput').value = data.min_deposit;
+        if (data.login_block !== undefined) document.getElementById('loginBlockInput').value = data.login_block ? "true" : "false";
+        
+        if (data.prediction_mode === "auto") {
+          document.getElementById('modeAuto').checked = true;
+        } else {
+          document.getElementById('modeManual').checked = true;
+        }
+      }
+    });
+  }
+
+  // 🔴 AUTO LIVE PERIOD FETCHER (-1 LOGIC UPDATED)
+  let currentLivePeriod = null;
+  async function fetchLiveAdminPeriod() {
+    try {
+      let res = await fetch("https://api.bdg88zf.com/api/webapi/GetGameIssue", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ typeId: 1, language: 0, random: "40079dcba93a48769c6ee9d4d4fae23f", signature: "D12108C4F57C549D82B23A91E0FA20AE", timestamp: 1727792520 })
+      });
+      let j = await res.json();
+      if (j && j.code === 0 && j.data && j.data.issueNumber) {
+        let cur = j.data.issueNumber.toString();
+        if (cur !== currentLivePeriod) {
+          currentLivePeriod = cur;
+          
+          // API wale period number ko -1 kar diya gaya hai
+          let previousPeriod = (BigInt(cur) - 1n).toString();
+          
+          document.getElementById('periodInput').value = previousPeriod;
+        }
+      }
+    } catch (e) {}
+  }
+  
+  // Start fetching immediately, then every 2 seconds
+  fetchLiveAdminPeriod();
+  setInterval(fetchLiveAdminPeriod, 2000);
+
+  // Toast Function (iOS Style)
+  let toastTimer;
+  function showToast(msg, isError = false) {
+    const toast = document.getElementById('toast');
+    const msgEl = document.getElementById('toastMsg');
+    const iconEl = document.getElementById('toastIcon');
+    
+    msgEl.innerText = msg;
+    if(isError) {
+      toast.classList.add('error');
+      iconEl.innerText = "!";
+    } else {
+      toast.classList.remove('error');
+      iconEl.innerText = "✓";
+    }
+
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.classList.remove('show'); }, 3000);
+  }
+
+  // Auto/Manual Database Toggle
+  function updateMode(mode) {
+    database.ref('settings/app_config').update({ prediction_mode: mode })
+      .then(() => { showToast(`Mode Set To: ${mode.toUpperCase()}`); })
+      .catch((error) => { showToast("Error: " + error.message, true); });
+  }
+
+  // 1. Save Prediction Function
+  function savePrediction() {
     const period = document.getElementById("periodInput").value.trim();
     const num = document.getElementById("numberInput").value;
     const size = document.getElementById("sizeInput").value;
 
-    if(!period) {
-      alert("Please enter a Period Number!");
-      return;
-    }
+    if(!period) { showToast("Please Enter Period Number", true); return; }
 
-    // Firebase me data send karne ka code
     database.ref('predictions/' + period).set({
       n: num,
       s: size
     }).then(() => {
-      // Success Message
-      const msg = document.getElementById("msg");
-      msg.style.display = "block";
-      setTimeout(() => {
-        msg.style.display = "none";
-      }, 3000);
-      
-      // Box clear kar do agli entry ke liye
-      document.getElementById("periodInput").value = "";
+      showToast("Signal Pushed to App!");
     }).catch((error) => {
-      alert("Error saving data: " + error.message);
+      showToast("Error: " + error.message, true);
     });
+  }
+
+  // 2. Save System Config Function
+  function saveSystemConfig() {
+    const regUrl = document.getElementById("regUrlInput").value.trim();
+    const depUrl = document.getElementById("depUrlInput").value.trim();
+    const minDep = document.getElementById("minDepInput").value.trim();
+    const loginBlockStr = document.getElementById("loginBlockInput").value;
+
+    let updates = {};
+    if (regUrl) updates['register_url'] = regUrl;
+    if (depUrl) updates['deposit_url'] = depUrl;
+    if (minDep !== "") updates['min_deposit'] = Number(minDep);
+    updates['login_block'] = (loginBlockStr === "true");
+
+    database.ref('settings/app_config').update(updates)
+      .then(() => { showToast("System Configuration Saved"); })
+      .catch((error) => { showToast("Error: " + error.message, true); });
   }
 </script>
 </body>
