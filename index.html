@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>iOS VIP Controller</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>ZAYRO CORE — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
 <!-- FIREBASE SDK -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -13,19 +14,30 @@
 <style>
   :root {
     --ios-blue: #0A84FF;
-    --ios-blue-glow: rgba(10, 132, 255, 0.4);
+    --ios-blue-2: #0066FF;
     --ios-green: #30D158;
-    --ios-green-glow: rgba(48, 209, 88, 0.4);
+    --ios-green-2: #00C853;
     --ios-red: #FF453A;
-    --glass-bg: rgba(30, 30, 35, 0.6);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --glass-highlight: rgba(255, 255, 255, 0.05);
+    --ios-purple: #BF5AF2;
+    --glass-bg: rgba(28, 28, 32, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.09);
     --text-main: #FFFFFF;
-    --text-muted: #EBEBF599;
+    --text-muted: rgba(235, 235, 245, 0.6);
+    --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --smooth: cubic-bezier(0.25, 1, 0.5, 1);
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-  
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html, body { overscroll-behavior: none; }
+
   body {
     background-color: #000;
     color: var(--text-main);
@@ -33,218 +45,693 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 30px 20px;
+    padding: max(28px, env(safe-area-inset-top)) 18px 50px;
     overflow-x: hidden;
     position: relative;
+    isolation: isolate;
   }
 
-  /* ══ ANIMATED BACKGROUND ORBS (UPGRADED) ══ */
+  /* ══════════ ANIMATED MESH GRADIENT BACKGROUND ══════════ */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: -40%;
+    z-index: -3;
+    background:
+      radial-gradient(circle at 20% 25%, rgba(132, 0, 255, 0.55), transparent 42%),
+      radial-gradient(circle at 80% 20%, rgba(10, 132, 255, 0.55), transparent 42%),
+      radial-gradient(circle at 50% 85%, rgba(48, 209, 88, 0.30), transparent 45%),
+      radial-gradient(circle at 90% 75%, rgba(191, 90, 242, 0.35), transparent 42%);
+    filter: blur(70px) saturate(140%);
+    animation: meshDrift 22s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+
+  @keyframes meshDrift {
+    0%   { transform: rotate(0deg) scale(1.05) translate(0, 0); }
+    50%  { transform: rotate(12deg) scale(1.18) translate(2%, -2%); }
+    100% { transform: rotate(-8deg) scale(1.10) translate(-2%, 2%); }
+  }
+
+  /* Film grain overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 0.6s steps(2) infinite;
+  }
+  @keyframes grain {
+    0%,100% { transform: translate(0,0); }
+    50% { transform: translate(-2%, 2%); }
+  }
+
+  /* ══════════ FLOATING ORBS ══════════ */
   .bg-orb {
     position: fixed;
     border-radius: 50%;
-    filter: blur(80px);
+    filter: blur(90px);
     z-index: -1;
-    opacity: 0.5;
-    animation: floatOrb 15s infinite alternate ease-in-out;
+    opacity: 0.45;
+    pointer-events: none;
+    will-change: transform;
   }
-  .orb-1 { width: 350px; height: 350px; background: #8400ff; top: -100px; left: -100px; }
-  .orb-2 { width: 300px; height: 300px; background: #0A84FF; bottom: 50px; right: -100px; animation-delay: -5s; animation-direction: alternate-reverse; }
-  .orb-3 { width: 250px; height: 250px; background: #30D158; top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0.15; animation: centerOrb 20s infinite linear; }
+  .orb-1 { width: 320px; height: 320px; background: #8400ff; top: -110px; left: -110px; animation: floatOrb 16s infinite alternate ease-in-out; }
+  .orb-2 { width: 280px; height: 280px; background: var(--ios-blue); bottom: 40px; right: -110px; animation: floatOrb 19s infinite alternate-reverse ease-in-out; }
+  .orb-3 { width: 240px; height: 240px; background: var(--ios-green); top: 45%; left: 50%; opacity: 0.13; animation: centerOrb 24s infinite linear; }
 
   @keyframes floatOrb {
-    0% { transform: translateY(0px) rotate(0deg) scale(1); }
-    50% { transform: translateY(30px) rotate(180deg) scale(1.05); }
-    100% { transform: translateY(-20px) rotate(360deg) scale(1.1); }
+    0%   { transform: translate(0,0) rotate(0deg) scale(1); }
+    50%  { transform: translate(28px, 34px) rotate(180deg) scale(1.08); }
+    100% { transform: translate(-22px, -18px) rotate(360deg) scale(1.14); }
   }
   @keyframes centerOrb {
-    0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
-    50% { transform: translate(-40%, -60%) rotate(180deg) scale(1.2); }
+    0%   { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+    50%  { transform: translate(-38%, -62%) rotate(180deg) scale(1.25); }
     100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); }
   }
 
-  /* ══ HEADER ══ */
-  .header { text-align: center; margin-bottom: 35px; animation: fadeInDown 0.8s ease backwards; width: 100%; max-width: 420px; }
-  .header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
-  .header p { font-size: 13px; color: var(--text-muted); font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; }
-
-  /* ══ PREMIUM GLASS CARDS (STAGGERED ENTRY) ══ */
-  .glass-card {
-    background: var(--glass-bg);
-    backdrop-filter: blur(35px);
-    -webkit-backdrop-filter: blur(35px);
-    border: 1.5px solid var(--glass-border);
-    border-radius: 28px;
-    padding: 26px;
+  /* ══════════ HEADER ══════════ */
+  .header {
+    text-align: center;
+    margin-bottom: 26px;
     width: 100%;
-    max-width: 420px;
-    margin-bottom: 25px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
-    animation: fadeInUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) backwards;
+    max-width: 430px;
+    animation: heroIn 1s var(--smooth) backwards;
   }
-  .card-1 { animation-delay: 0.1s; }
-  .card-2 { animation-delay: 0.3s; }
-  
+  .header .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 12px;
+    border-radius: 100px;
+    background: rgba(48, 209, 88, 0.12);
+    border: 1px solid rgba(48, 209, 88, 0.28);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--ios-green);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    animation: badgeIn 1s 0.15s var(--spring) backwards;
+  }
+  .header .badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ios-green);
+    box-shadow: 0 0 8px var(--ios-green);
+    animation: dotPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes dotPulse {
+    0%,100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.5; }
+  }
+
+  .header h1 {
+    font-size: 34px;
+    font-weight: 900;
+    letter-spacing: -1.2px;
+    line-height: 1.05;
+    background: linear-gradient(180deg, #FFFFFF 0%, #A8A8B3 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+    animation: titleShine 4s ease-in-out infinite;
+    background-size: 100% 200%;
+  }
+  @keyframes titleShine {
+    0%,100% { background-position: 0% 0%; }
+    50% { background-position: 0% 100%; }
+  }
+
+  .header p {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 2.4px;
+    text-transform: uppercase;
+  }
+
+  @keyframes heroIn {
+    from { opacity: 0; transform: translateY(-34px) scale(0.94); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes badgeIn {
+    from { opacity: 0; transform: scale(0.6) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* ══════════ GLASS CARDS ══════════ */
+  .glass-card {
+    position: relative;
+    background: var(--glass-bg);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border-radius: 30px;
+    padding: 24px 22px 22px;
+    width: 100%;
+    max-width: 430px;
+    margin-bottom: 22px;
+    box-shadow:
+      0 24px 60px rgba(0, 0, 0, 0.55),
+      0 2px 0 rgba(255, 255, 255, 0.05) inset,
+      0 0 0 1px rgba(255, 255, 255, 0.06);
+    animation: cardIn 0.95s var(--smooth) backwards;
+    overflow: hidden;
+    will-change: transform;
+  }
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 30px;
+    padding: 1.4px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.35), rgba(255,255,255,0.02) 40%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0.14));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .glass-card::after {
+    content: '';
+    position: absolute;
+    top: -60%;
+    left: -60%;
+    width: 220%;
+    height: 220%;
+    background: conic-gradient(from 0deg, transparent 0%, rgba(255,255,255,0.06) 12%, transparent 25%);
+    animation: cardSheen 7s linear infinite;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  @keyframes cardSheen {
+    to { transform: rotate(360deg); }
+  }
+
+  .card-1 { animation-delay: 0.12s; }
+  .card-2 { animation-delay: 0.26s; }
+
+  @keyframes cardIn {
+    from {
+      opacity: 0;
+      transform: translateY(46px) scale(0.94) rotateX(8deg);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1) rotateX(0deg);
+      filter: blur(0);
+    }
+  }
+
+  /* Staggered content inside cards */
+  .glass-card > * {
+    position: relative;
+    z-index: 2;
+    animation: itemIn 0.7s var(--smooth) backwards;
+  }
+  .card-1 > *:nth-child(1) { animation-delay: 0.28s; }
+  .card-1 > *:nth-child(2) { animation-delay: 0.34s; }
+  .card-1 > *:nth-child(3) { animation-delay: 0.40s; }
+  .card-1 > *:nth-child(4) { animation-delay: 0.46s; }
+  .card-1 > *:nth-child(5) { animation-delay: 0.52s; }
+  .card-2 > *:nth-child(1) { animation-delay: 0.42s; }
+  .card-2 > *:nth-child(2) { animation-delay: 0.48s; }
+  .card-2 > *:nth-child(3) { animation-delay: 0.54s; }
+  .card-2 > *:nth-child(4) { animation-delay: 0.60s; }
+  .card-2 > *:nth-child(5) { animation-delay: 0.66s; }
+
+  @keyframes itemIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   .card-title {
-    font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 22px;
-    display: flex; align-items: center; gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    letter-spacing: -0.2px;
   }
-  
-  /* FLOATING ICONS */
+
   .card-icon {
-    width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 10px;
-    display: flex; align-items: center; justify-content: center; font-size: 16px;
-    box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
-    animation: floatIcon 3s ease-in-out infinite;
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04));
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.25);
+    animation: floatIcon 3.4s ease-in-out infinite;
+    flex-shrink: 0;
   }
   @keyframes floatIcon {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-4px); }
+    0%,100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-5px) rotate(-4deg); }
   }
 
-  /* ══ IOS SEGMENTED CONTROL ══ */
+  /* ══════════ SEGMENTED CONTROL ══════════ */
   .segmented-control {
-    display: flex; background: rgba(0, 0, 0, 0.4); border-radius: 12px; padding: 4px;
-    margin-bottom: 22px; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    display: flex;
+    background: rgba(0, 0, 0, 0.42);
+    border-radius: 14px;
+    padding: 4px;
+    margin-bottom: 20px;
+    position: relative;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.04);
+    overflow: hidden;
   }
   .segmented-control input { display: none; }
   .segmented-control label {
-    flex: 1; text-align: center; padding: 12px 0; font-size: 13px; font-weight: 600;
-    color: var(--text-muted); cursor: pointer; transition: 0.3s; z-index: 2;
+    flex: 1;
+    text-align: center;
+    padding: 12px 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.35s var(--smooth), transform 0.25s var(--spring);
+    z-index: 2;
+    position: relative;
+    user-select: none;
   }
-  .segmented-control input:checked + label { color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+  .segmented-control label:active { transform: scale(0.94); }
+  .segmented-control input:checked + label {
+    color: #fff;
+    text-shadow: 0 0 14px rgba(255,255,255,0.45);
+  }
   .slider {
-    position: absolute; top: 4px; left: 4px; height: calc(100% - 8px); width: calc(50% - 4px);
-    background: rgba(255, 255, 255, 0.2); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 3px 8px rgba(0,0,0,0.3); transition: 0.35s cubic-bezier(0.25, 1, 0.5, 1); z-index: 1;
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    height: calc(100% - 8px);
+    width: calc(50% - 4px);
+    background: linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.10));
+    border-radius: 11px;
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.3);
+    transition: transform 0.5s var(--spring), width 0.4s var(--smooth);
+    z-index: 1;
   }
   #modeManual:checked ~ .slider { transform: translateX(100%); }
 
-  /* ══ INPUTS (GLOW FOCUS) ══ */
-  .input-group { margin-bottom: 18px; }
-  .input-group label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 10px; margin-left: 6px; font-weight: 500; transition: 0.3s; }
-  .live-tag { color: var(--ios-green); font-size: 10px; font-weight: 700; background: rgba(48,209,88,0.15); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(48,209,88,0.3); animation: pulseTag 1.5s infinite alternate; }
-  
-  input, select {
-    width: 100%; padding: 16px 18px; background: rgba(0, 0, 0, 0.3);
-    border: 1.5px solid var(--glass-border); color: #fff; border-radius: 16px;
-    font-size: 16px; font-weight: 600; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); outline: none; appearance: none;
-    box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
+  /* ══════════ INPUTS ══════════ */
+  .input-group { margin-bottom: 16px; }
+
+  .input-group > label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 9px;
+    margin-left: 5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    transition: color 0.3s ease;
   }
-  
-  @keyframes inputGlow {
-    0%, 100% { box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.1); }
-    50% { box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.25); }
+
+  .live-tag {
+    color: var(--ios-green);
+    font-size: 9.5px;
+    font-weight: 800;
+    background: rgba(48,209,88,0.13);
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid rgba(48,209,88,0.3);
+    animation: pulseTag 1.6s ease-in-out infinite alternate;
+    letter-spacing: 0.6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
-  input:focus, select:focus { border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.08); animation: inputGlow 2s infinite; transform: scale(1.02); }
-  
-  select { background-image: url('data:image/svg+xml;utf8,<svg fill="%23FFFFFF" height="24" viewBox="0 0 24 24" width="24" opacity="0.6" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position-x: 95%; background-position-y: 50%; }
+  @keyframes pulseTag {
+    0% { opacity: 0.75; box-shadow: 0 0 0 rgba(48,209,88,0); }
+    100% { opacity: 1; box-shadow: 0 0 12px rgba(48,209,88,0.55); }
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select {
+    width: 100%;
+    padding: 16px 18px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1.5px solid rgba(255,255,255,0.08);
+    color: #fff;
+    border-radius: 17px;
+    font-size: 16px;
+    font-weight: 600;
+    transition: border-color 0.3s var(--smooth), background 0.3s, box-shadow 0.35s, transform 0.35s var(--spring);
+    outline: none;
+    appearance: none;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.35);
+    letter-spacing: 0.2px;
+  }
+  input::placeholder { color: rgba(235,235,245,0.28); font-weight: 500; }
+
+  input:focus, select:focus {
+    border-color: var(--ios-blue);
+    background: rgba(10, 132, 255, 0.09);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.3), 0 0 0 4px rgba(10,132,255,0.18), 0 0 24px rgba(10,132,255,0.28);
+    transform: translateY(-1px);
+  }
+
+  #periodInput {
+    color: var(--ios-green);
+    text-shadow: 0 0 16px rgba(48,209,88,0.45);
+    font-weight: 800;
+    letter-spacing: 1.6px;
+    font-variant-numeric: tabular-nums;
+    font-size: 18px;
+    text-align: center;
+  }
+
+  select {
+    background-image: url('data:image/svg+xml;utf8,<svg fill="%23FFFFFF" height="24" viewBox="0 0 24 24" width="24" opacity="0.55" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+    background-repeat: no-repeat;
+    background-position-x: 95%;
+    background-position-y: 50%;
+    padding-right: 44px;
+    cursor: pointer;
+  }
   select option { background: #1c1c1e; color: #fff; }
 
-  /* ══ BUTTONS (PULSING ANIMATION) ══ */
-  .ios-btn {
-    width: 100%; padding: 18px; background: linear-gradient(180deg, #1C93FF, var(--ios-blue));
-    border: 1px solid rgba(255,255,255,0.2); border-top: 1px solid rgba(255,255,255,0.4);
-    color: #fff; font-size: 16px; font-weight: 700; border-radius: 16px; cursor: pointer;
-    box-shadow: 0 8px 20px var(--ios-blue-glow); transition: 0.2s cubic-bezier(0.25, 1, 0.5, 1); margin-top: 10px;
-    position: relative; overflow: hidden;
+  /* ══════════ NUMBER GRID (CUSTOM PICKER) ══════════ */
+  .num-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
   }
-  .ios-btn:active { transform: scale(0.95); box-shadow: 0 4px 10px var(--ios-blue-glow); }
-  
-  .ios-btn.blue { animation: btnPulseBlue 2.5s infinite; }
-  .ios-btn.green { background: linear-gradient(180deg, #3EE167, var(--ios-green)); animation: btnPulseGreen 2.5s infinite; }
+  .num-btn {
+    position: relative;
+    padding: 14px 0;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1.5px solid rgba(255,255,255,0.07);
+    color: var(--text-muted);
+    font-size: 17px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s var(--spring);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.3);
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+  }
+  .num-btn:active { transform: scale(0.9); }
+  .num-btn.active {
+    color: #fff;
+    background: linear-gradient(180deg, #1C93FF, var(--ios-blue-2));
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: 0 8px 22px rgba(10,132,255,0.55), inset 0 1px 0 rgba(255,255,255,0.4);
+    transform: translateY(-2px) scale(1.03);
+    text-shadow: 0 0 12px rgba(255,255,255,0.5);
+  }
+  .num-btn.active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.5), transparent 65%);
+    animation: numFlash 0.6s var(--smooth);
+  }
+  @keyframes numFlash {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  /* ══════════ SIZE SEGMENTED (BIG / SMALL) ══════════ */
+  .size-switch {
+    display: flex;
+    background: rgba(0,0,0,0.4);
+    border-radius: 16px;
+    padding: 4px;
+    position: relative;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.55);
+  }
+  .size-switch input { display: none; }
+  .size-switch label {
+    flex: 1;
+    text-align: center;
+    padding: 14px 0;
+    font-size: 13.5px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    z-index: 2;
+    transition: color 0.35s var(--smooth), transform 0.25s var(--spring);
+    user-select: none;
+  }
+  .size-switch label:active { transform: scale(0.94); }
+  .size-switch input:checked + label { color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.4); }
+  #sizeBig:checked ~ .size-slider {
+    transform: translateX(0%);
+    background: linear-gradient(180deg, #3EE167, var(--ios-green-2));
+    box-shadow: 0 8px 22px rgba(48,209,88,0.5), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  #sizeSmall:checked ~ .size-slider {
+    transform: translateX(100%);
+    background: linear-gradient(180deg, #FF6B60, #E03028);
+    box-shadow: 0 8px 22px rgba(255,69,58,0.5), inset 0 1px 0 rgba(255,255,255,0.4);
+  }
+  .size-slider {
+    position: absolute;
+    top: 4px; left: 4px;
+    height: calc(100% - 8px);
+    width: calc(50% - 4px);
+    border-radius: 13px;
+    transition: transform 0.5s var(--spring), background 0.4s ease, box-shadow 0.4s ease;
+    z-index: 1;
+  }
+
+  /* ══════════ BUTTONS ══════════ */
+  .ios-btn {
+    position: relative;
+    width: 100%;
+    padding: 18px;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    border-radius: 18px;
+    cursor: pointer;
+    margin-top: 12px;
+    overflow: hidden;
+    transition: transform 0.22s var(--spring), box-shadow 0.3s ease, filter 0.3s;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .ios-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -120%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,0.45), transparent);
+    transform: skewX(-22deg);
+    animation: btnShine 3.6s ease-in-out infinite;
+  }
+  @keyframes btnShine {
+    0%, 62% { left: -120%; }
+    85%, 100% { left: 160%; }
+  }
+  .ios-btn:active { transform: scale(0.955); filter: brightness(0.92); }
+
+  .ios-btn.blue {
+    background: linear-gradient(180deg, #1C93FF 0%, var(--ios-blue-2) 100%);
+    box-shadow: 0 10px 26px rgba(10,132,255,0.42), inset 0 1px 0 rgba(255,255,255,0.4);
+    animation: btnPulseBlue 2.8s ease-out infinite;
+  }
+  .ios-btn.green {
+    background: linear-gradient(180deg, #3EE167 0%, var(--ios-green-2) 100%);
+    box-shadow: 0 10px 26px rgba(48,209,88,0.42), inset 0 1px 0 rgba(255,255,255,0.4);
+    animation: btnPulseGreen 2.8s ease-out infinite;
+  }
 
   @keyframes btnPulseBlue {
-    0% { box-shadow: 0 8px 20px var(--ios-blue-glow), 0 0 0 0 rgba(10, 132, 255, 0.4); }
-    70% { box-shadow: 0 8px 20px var(--ios-blue-glow), 0 0 0 12px rgba(10, 132, 255, 0); }
-    100% { box-shadow: 0 8px 20px var(--ios-blue-glow), 0 0 0 0 rgba(10, 132, 255, 0); }
+    0%   { box-shadow: 0 10px 26px rgba(10,132,255,0.42), 0 0 0 0 rgba(10,132,255,0.45), inset 0 1px 0 rgba(255,255,255,0.4); }
+    70%  { box-shadow: 0 10px 26px rgba(10,132,255,0.42), 0 0 0 16px rgba(10,132,255,0), inset 0 1px 0 rgba(255,255,255,0.4); }
+    100% { box-shadow: 0 10px 26px rgba(10,132,255,0.42), 0 0 0 0 rgba(10,132,255,0), inset 0 1px 0 rgba(255,255,255,0.4); }
   }
   @keyframes btnPulseGreen {
-    0% { box-shadow: 0 8px 20px var(--ios-green-glow), 0 0 0 0 rgba(48, 209, 88, 0.4); }
-    70% { box-shadow: 0 8px 20px var(--ios-green-glow), 0 0 0 12px rgba(48, 209, 88, 0); }
-    100% { box-shadow: 0 8px 20px var(--ios-green-glow), 0 0 0 0 rgba(48, 209, 88, 0); }
+    0%   { box-shadow: 0 10px 26px rgba(48,209,88,0.42), 0 0 0 0 rgba(48,209,88,0.45), inset 0 1px 0 rgba(255,255,255,0.4); }
+    70%  { box-shadow: 0 10px 26px rgba(48,209,88,0.42), 0 0 0 16px rgba(48,209,88,0), inset 0 1px 0 rgba(255,255,255,0.4); }
+    100% { box-shadow: 0 10px 26px rgba(48,209,88,0.42), 0 0 0 0 rgba(48,209,88,0), inset 0 1px 0 rgba(255,255,255,0.4); }
   }
 
-  /* ══ TOAST NOTIFICATION ══ */
+  /* Ripple */
+  .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.5);
+    transform: scale(0);
+    animation: rippleAnim 0.65s var(--smooth);
+    pointer-events: none;
+  }
+  @keyframes rippleAnim {
+    to { transform: scale(3.5); opacity: 0; }
+  }
+
+  /* ══════════ DYNAMIC-ISLAND TOAST ══════════ */
   #toast {
-    position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
-    background: rgba(30, 30, 35, 0.85); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
-    border: 1px solid rgba(255,255,255,0.1); padding: 14px 24px; border-radius: 30px;
-    font-size: 14px; font-weight: 600; color: #fff; box-shadow: 0 15px 30px rgba(0,0,0,0.4);
-    transition: top 0.4s cubic-bezier(0.25, 1, 0.5, 1); z-index: 9999; display: flex; align-items: center; gap: 12px;
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-140%) scale(0.5);
+    background: rgba(20, 20, 24, 0.82);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 12px 20px 12px 12px;
+    border-radius: 100px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #fff;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.14);
+    transition: transform 0.7s var(--spring), opacity 0.35s ease;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    max-width: 92vw;
+    pointer-events: none;
   }
-  #toast.show { top: 40px; animation: gentleShake 0.4s ease forwards; }
-  .toast-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; background: var(--ios-green); color: #000; box-shadow: 0 0 10px var(--ios-green); }
-  #toast.error .toast-icon { background: var(--ios-red); color: #fff; box-shadow: 0 0 10px var(--ios-red); }
+  #toast.show {
+    transform: translateX(-50%) translateY(0) scale(1);
+    opacity: 1;
+  }
+  .toast-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 900;
+    background: var(--ios-green);
+    color: #000;
+    box-shadow: 0 0 16px var(--ios-green);
+    flex-shrink: 0;
+    animation: iconPop 0.5s var(--spring);
+  }
+  @keyframes iconPop {
+    0% { transform: scale(0) rotate(-120deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  #toast.error .toast-icon { background: var(--ios-red); color: #fff; box-shadow: 0 0 16px var(--ios-red); }
+  #toast.error { border-color: rgba(255,69,58,0.35); }
 
-  @keyframes gentleShake { 0% { transform: translateX(-50%); } 25% { transform: translateX(-52%); } 50% { transform: translateX(-48%); } 75% { transform: translateX(-51%); } 100% { transform: translateX(-50%); } }
-  @keyframes pulseTag { 0% { opacity: 0.7; box-shadow: 0 0 0 rgba(48,209,88,0); } 100% { opacity: 1; box-shadow: 0 0 8px rgba(48,209,88,0.6); } }
-  @keyframes fadeInDown { from { opacity: 0; transform: translateY(-30px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+  /* ══════════ SCROLLBAR HIDE ══════════ */
+  ::-webkit-scrollbar { width: 0; height: 0; }
 
+  /* ══════════ REDUCED MOTION ══════════ */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 </style>
 </head>
 <body>
 
-  <!-- BACKGROUND ORBS -->
+  <!-- BACKGROUND LAYERS -->
   <div class="bg-orb orb-1"></div>
   <div class="bg-orb orb-2"></div>
   <div class="bg-orb orb-3"></div>
 
-  <!-- TOAST ALERTS -->
-  <div id="toast"><div class="toast-icon" id="toastIcon">✓</div><span id="toastMsg">Updated Successfully</span></div>
+  <!-- TOAST -->
+  <div id="toast">
+    <div class="toast-icon" id="toastIcon">✓</div>
+    <span id="toastMsg">Updated Successfully</span>
+  </div>
 
+  <!-- HEADER -->
   <div class="header">
+    <div class="badge"><span class="dot"></span> System Online</div>
     <h1>ZAYRO CORE</h1>
     <p>Admin Control Center</p>
   </div>
 
-  <!-- SECTION 1: LIVE GAME PREDICTION (STAGGERED CARD 1) -->
+  <!-- ══════════ CARD 1: LIVE INJECTOR ══════════ -->
   <div class="glass-card card-1">
-    <div class="card-title"><div class="card-icon">🚀</div> Live Injector</div>
-    
+    <div class="card-title">
+      <div class="card-icon">🚀</div> Live Injector
+    </div>
+
     <!-- MODE TOGGLE -->
     <div class="segmented-control">
       <input type="radio" name="mode" id="modeAuto" value="auto">
       <label for="modeAuto" onclick="updateMode('auto')">Auto Engine</label>
-      
+
       <input type="radio" name="mode" id="modeManual" value="manual" checked>
       <label for="modeManual" onclick="updateMode('manual')">Manual Override</label>
-      
+
       <div class="slider"></div>
     </div>
 
+    <!-- PERIOD -->
     <div class="input-group">
       <label>Target Period <span class="live-tag">● SYNCED (-1)</span></label>
-      <input type="number" id="periodInput" placeholder="Fetching System Data..." style="color:var(--ios-green); text-shadow: 0 0 10px rgba(48,209,88,0.3);">
+      <input type="number" id="periodInput" placeholder="Fetching System Data..." readonly>
     </div>
 
-    <div style="display: flex; gap: 15px;">
-      <div class="input-group" style="flex: 1;">
-        <label>Result</label>
-        <select id="numberInput">
-          <option value="0">Number 0</option><option value="1">Number 1</option><option value="2">Number 2</option>
-          <option value="3">Number 3</option><option value="4">Number 4</option><option value="5">Number 5</option>
-          <option value="6">Number 6</option><option value="7">Number 7</option><option value="8">Number 8</option>
-          <option value="9">Number 9</option>
-        </select>
-      </div>
-
-      <div class="input-group" style="flex: 1;">
-        <label>Size</label>
-        <select id="sizeInput">
-          <option value="BIG">BIG</option>
-          <option value="SMALL">SMALL</option>
-        </select>
+    <!-- RESULT GRID -->
+    <div class="input-group">
+      <label>Result Number</label>
+      <input type="hidden" id="numberInput" value="0">
+      <div class="num-grid" id="numGrid">
+        <button type="button" class="num-btn active" data-num="0">0</button>
+        <button type="button" class="num-btn" data-num="1">1</button>
+        <button type="button" class="num-btn" data-num="2">2</button>
+        <button type="button" class="num-btn" data-num="3">3</button>
+        <button type="button" class="num-btn" data-num="4">4</button>
+        <button type="button" class="num-btn" data-num="5">5</button>
+        <button type="button" class="num-btn" data-num="6">6</button>
+        <button type="button" class="num-btn" data-num="7">7</button>
+        <button type="button" class="num-btn" data-num="8">8</button>
+        <button type="button" class="num-btn" data-num="9">9</button>
       </div>
     </div>
 
-    <button class="ios-btn blue" onclick="savePrediction()">Push Signal</button>
+    <!-- SIZE -->
+    <div class="input-group">
+      <label>Prediction Size</label>
+      <input type="hidden" id="sizeInput" value="BIG">
+      <div class="size-switch">
+        <input type="radio" name="size" id="sizeBig" value="BIG" checked>
+        <label for="sizeBig" onclick="setSize('BIG')">BIG</label>
+
+        <input type="radio" name="size" id="sizeSmall" value="SMALL">
+        <label for="sizeSmall" onclick="setSize('SMALL')">SMALL</label>
+
+        <div class="size-slider"></div>
+      </div>
+    </div>
+
+    <button class="ios-btn blue" onclick="savePrediction(event)">Push Signal</button>
   </div>
 
-  <!-- SECTION 2: SYSTEM CONFIG (STAGGERED CARD 2) -->
+  <!-- ══════════ CARD 2: GLOBAL SETTINGS ══════════ -->
   <div class="glass-card card-2">
-    <div class="card-title"><div class="card-icon">⚙️</div> Global Settings</div>
-    
+    <div class="card-title">
+      <div class="card-icon">⚙️</div> Global Settings
+    </div>
+
     <div class="input-group">
       <label>Registration URL</label>
       <input type="text" id="regUrlInput" placeholder="https://...">
@@ -255,27 +742,34 @@
       <input type="text" id="depUrlInput" placeholder="https://...">
     </div>
 
-    <div style="display: flex; gap: 15px;">
-      <div class="input-group" style="flex: 1;">
+    <div style="display:flex; gap:14px;">
+      <div class="input-group" style="flex:1;">
         <label>Min Deposit (₹)</label>
         <input type="number" id="minDepInput" placeholder="e.g. 300">
       </div>
 
-      <div class="input-group" style="flex: 1;">
+      <div class="input-group" style="flex:1;">
         <label>Login Barrier</label>
-        <select id="loginBlockInput">
-          <option value="true">ON (Block)</option>
-          <option value="false">OFF (Allow)</option>
-        </select>
+        <input type="hidden" id="loginBlockInput" value="true">
+        <div class="size-switch" style="height:53px;">
+          <input type="radio" name="lblock" id="lblockOn" value="true" checked>
+          <label for="lblockOn" onclick="setLoginBlock('true')" style="padding:0; display:flex; align-items:center; justify-content:center;">ON</label>
+
+          <input type="radio" name="lblock" id="lblockOff" value="false">
+          <label for="lblockOff" onclick="setLoginBlock('false')" style="padding:0; display:flex; align-items:center; justify-content:center;">OFF</label>
+
+          <div class="size-slider" id="lblockSlider"></div>
+        </div>
       </div>
     </div>
 
-    <button class="ios-btn green" onclick="saveSystemConfig()">Update System</button>
+    <button class="ios-btn green" onclick="saveSystemConfig(event)">Update System</button>
   </div>
 
-
 <script>
-  // 🔴🔴 APNA FIREBASE CONFIG YAHAN PASTE KARO 🔴🔴
+  /* ══════════════════════════════════════════════════════
+     🔴🔴  APNA FIREBASE CONFIG YAHAN PASTE KARO  🔴🔴
+  ══════════════════════════════════════════════════════ */
   const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
     authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -291,16 +785,99 @@
   }
   const database = firebase.database();
 
-  // Load Existing Data
+  /* ══════════ HAPTIC FEEDBACK ══════════ */
+  function haptic(ms = 12) {
+    if (navigator.vibrate) navigator.vibrate(ms);
+  }
+
+  /* ══════════ TOAST (Dynamic Island Style) ══════════ */
+  let toastTimer;
+  function showToast(msg, isError = false) {
+    const toast = document.getElementById('toast');
+    const msgEl = document.getElementById('toastMsg');
+    const iconEl = document.getElementById('toastIcon');
+
+    msgEl.innerText = msg;
+    if (isError) {
+      toast.classList.add('error');
+      iconEl.innerText = "!";
+    } else {
+      toast.classList.remove('error');
+      iconEl.innerText = "✓";
+    }
+
+    toast.classList.remove('show');
+    // force reflow for re-trigger animation
+    void toast.offsetWidth;
+    toast.classList.add('show');
+
+    haptic(isError ? [20, 40, 20] : 14);
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  /* ══════════ RIPPLE ON ALL BUTTONS ══════════ */
+  document.querySelectorAll('.ios-btn').forEach(btn => {
+    btn.addEventListener('pointerdown', function (e) {
+      const rect = this.getBoundingClientRect();
+      const ripple = document.createElement('span');
+      const size = Math.max(rect.width, rect.height);
+      ripple.className = 'ripple';
+      ripple.style.width = ripple.style.height = size + 'px';
+      ripple.style.left = (e.clientX - rect.left - size / 2) + 'px';
+      ripple.style.top = (e.clientY - rect.top - size / 2) + 'px';
+      this.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 700);
+    });
+  });
+
+  /* ══════════ CUSTOM NUMBER GRID ══════════ */
+  const numGrid = document.getElementById('numGrid');
+  const numberInput = document.getElementById('numberInput');
+  numGrid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.num-btn');
+    if (!btn) return;
+    document.querySelectorAll('.num-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    numberInput.value = btn.dataset.num;
+    haptic(10);
+  });
+
+  /* ══════════ SIZE SWITCH ══════════ */
+  function setSize(val) {
+    document.getElementById('sizeInput').value = val;
+    haptic(10);
+  }
+
+  /* ══════════ LOGIN BLOCK SWITCH ══════════ */
+  const lblockSlider = document.getElementById('lblockSlider');
+  function setLoginBlock(val) {
+    document.getElementById('loginBlockInput').value = val;
+    haptic(10);
+  }
+
+  /* ══════════ LOAD EXISTING DATA ══════════ */
   if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
     database.ref('settings/app_config').once('value').then((snapshot) => {
       if (snapshot.exists()) {
-        let data = snapshot.val();
+        const data = snapshot.val();
+
         if (data.register_url) document.getElementById('regUrlInput').value = data.register_url;
         if (data.deposit_url) document.getElementById('depUrlInput').value = data.deposit_url;
         if (data.min_deposit !== undefined) document.getElementById('minDepInput').value = data.min_deposit;
-        if (data.login_block !== undefined) document.getElementById('loginBlockInput').value = data.login_block ? "true" : "false";
-        
+
+        if (data.login_block !== undefined) {
+          const lb = !!data.login_block;
+          document.getElementById('loginBlockInput').value = lb ? "true" : "false";
+          document.getElementById('lblockOn').checked = lb;
+          document.getElementById('lblockOff').checked = !lb;
+          lblockSlider.style.transform = lb ? 'translateX(0%)' : 'translateX(100%)';
+          lblockSlider.style.background = lb
+            ? 'linear-gradient(180deg,#3EE167,#00C853)'
+            : 'linear-gradient(180deg,#FF6B60,#E03028)';
+        }
+
         if (data.prediction_mode === "auto") {
           document.getElementById('modeAuto').checked = true;
         } else {
@@ -310,93 +887,102 @@
     });
   }
 
-  // 🔴 AUTO LIVE PERIOD FETCHER (-1 LOGIC)
+  /* ══════════ AUTO LIVE PERIOD FETCHER (-1 LOGIC) ══════════ */
   let currentLivePeriod = null;
+
   async function fetchLiveAdminPeriod() {
     try {
-      let res = await fetch("https://api.bdg88zf.com/api/webapi/GetGameIssue", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ typeId: 1, language: 0, random: "40079dcba93a48769c6ee9d4d4fae23f", signature: "D12108C4F57C549D82B23A91E0FA20AE", timestamp: 1727792520 })
+      const res = await fetch("https://api.bdg88zf.com/api/webapi/GetGameIssue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          typeId: 1,
+          language: 0,
+          random: "40079dcba93a48769c6ee9d4d4fae23f",
+          signature: "D12108C4F57C549D82B23A91E0FA20AE",
+          timestamp: 1727792520
+        })
       });
-      let j = await res.json();
+      const j = await res.json();
       if (j && j.code === 0 && j.data && j.data.issueNumber) {
-        let cur = j.data.issueNumber.toString();
+        const cur = j.data.issueNumber.toString();
         if (cur !== currentLivePeriod) {
           currentLivePeriod = cur;
-          
-          let previousPeriod = (BigInt(cur) - 1n).toString();
-          document.getElementById('periodInput').value = previousPeriod;
+          const previousPeriod = (BigInt(cur) - 1n).toString();
+          const el = document.getElementById('periodInput');
+          el.value = previousPeriod;
+          // little pulse animation on update
+          el.style.transform = 'scale(1.06)';
+          setTimeout(() => el.style.transform = 'scale(1)', 220);
         }
       }
-    } catch (e) {}
+    } catch (e) { /* silent */ }
   }
-  
+
   fetchLiveAdminPeriod();
   setInterval(fetchLiveAdminPeriod, 2000);
 
-  // Toast Function (iOS Style)
-  let toastTimer;
-  function showToast(msg, isError = false) {
-    const toast = document.getElementById('toast');
-    const msgEl = document.getElementById('toastMsg');
-    const iconEl = document.getElementById('toastIcon');
-    
-    msgEl.innerText = msg;
-    if(isError) {
-      toast.classList.add('error');
-      iconEl.innerText = "!";
-    } else {
-      toast.classList.remove('error');
-      iconEl.innerText = "✓";
-    }
-
-    toast.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toast.classList.remove('show'); }, 3000);
-  }
-
-  // Auto/Manual Database Toggle
+  /* ══════════ MODE TOGGLE ══════════ */
   function updateMode(mode) {
+    haptic(14);
     database.ref('settings/app_config').update({ prediction_mode: mode })
-      .then(() => { showToast(`System Mode: ${mode.toUpperCase()}`); })
-      .catch((error) => { showToast("Error: " + error.message, true); });
+      .then(() => showToast(`System Mode: ${mode.toUpperCase()}`))
+      .catch((error) => showToast("Error: " + error.message, true));
   }
 
-  // 1. Save Prediction Function
-  function savePrediction() {
+  /* ══════════ SAVE PREDICTION ══════════ */
+  function savePrediction(e) {
     const period = document.getElementById("periodInput").value.trim();
     const num = document.getElementById("numberInput").value;
     const size = document.getElementById("sizeInput").value;
 
-    if(!period) { showToast("Wait for Period Sync...", true); return; }
+    if (!period) {
+      showToast("Wait for Period Sync...", true);
+      return;
+    }
 
-    database.ref('predictions/' + period).set({
-      n: num,
-      s: size
-    }).then(() => {
-      showToast("Signal Pushed to Server!");
-    }).catch((error) => {
-      showToast("Error: " + error.message, true);
-    });
+    database.ref('predictions/' + period).set({ n: num, s: size })
+      .then(() => showToast("Signal Pushed to Server!"))
+      .catch((error) => showToast("Error: " + error.message, true));
   }
 
-  // 2. Save System Config Function
+  /* ══════════ SAVE SYSTEM CONFIG ══════════ */
   function saveSystemConfig() {
     const regUrl = document.getElementById("regUrlInput").value.trim();
     const depUrl = document.getElementById("depUrlInput").value.trim();
     const minDep = document.getElementById("minDepInput").value.trim();
     const loginBlockStr = document.getElementById("loginBlockInput").value;
 
-    let updates = {};
+    const updates = {};
     if (regUrl) updates['register_url'] = regUrl;
     if (depUrl) updates['deposit_url'] = depUrl;
     if (minDep !== "") updates['min_deposit'] = Number(minDep);
     updates['login_block'] = (loginBlockStr === "true");
 
     database.ref('settings/app_config').update(updates)
-      .then(() => { showToast("Global Settings Applied"); })
-      .catch((error) => { showToast("Error: " + error.message, true); });
+      .then(() => showToast("Global Settings Applied"))
+      .catch((error) => showToast("Error: " + error.message, true));
   }
+
+  /* ══════════ 3D TILT ON CARDS (subtle) ══════════ */
+  if (window.matchMedia('(hover: hover)').matches) {
+    document.querySelectorAll('.glass-card').forEach(card => {
+      card.addEventListener('mousemove', (e) => {
+        const r = card.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width - 0.5;
+        const y = (e.clientY - r.top) / r.height - 0.5;
+        card.style.transform = `perspective(1100px) rotateY(${x * 4}deg) rotateX(${-y * 4}deg) translateZ(4px)`;
+      });
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = 'perspective(1100px) rotateY(0deg) rotateX(0deg) translateZ(0)';
+      });
+    });
+  }
+
+  /* ══════════ AUTO INIT SIZE / LOGIN SLIDER ══════════ */
+  window.addEventListener('load', () => {
+    lblockSlider.style.background = 'linear-gradient(180deg,#3EE167,#00C853)';
+  });
 </script>
 </body>
 </html>
