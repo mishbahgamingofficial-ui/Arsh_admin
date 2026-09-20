@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Control Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+<!-- FIREBASE SDK -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<style>
+  body {
+    background: #0a0014;
+    color: #fff;
+    font-family: 'Rajdhani', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+  }
+  .admin-box {
+    background: linear-gradient(170deg, #2b0057 0%, #0d001a 100%);
+    border: 2px solid #b44fff;
+    border-radius: 20px;
+    padding: 30px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 0 30px rgba(180,79,255,0.4);
+    text-align: center;
+  }
+  h2 {
+    font-family: 'Orbitron', sans-serif;
+    color: #00e88a;
+    text-shadow: 0 0 10px rgba(0,255,150,0.8);
+    margin-top: 0;
+  }
+  .input-group {
+    margin-bottom: 20px;
+    text-align: left;
+  }
+  label {
+    display: block;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    color: #d488ff;
+    margin-bottom: 5px;
+    letter-spacing: 1px;
+  }
+  input, select {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid #b44fff;
+    color: #fff;
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: 'Rajdhani', sans-serif;
+    box-sizing: border-box;
+  }
+  input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 10px rgba(180,79,255,0.6);
+  }
+  button {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(180deg, #8a2be2 0%, #4b0082 100%);
+    border: 1px solid #a633ff;
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 900;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 0 20px rgba(180,79,255,0.6);
+    transition: 0.2s;
+  }
+  button:active {
+    transform: scale(0.95);
+  }
+  .success-msg {
+    color: #00e88a;
+    margin-top: 15px;
+    font-weight: bold;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="admin-box">
+  <h2>HACK CONTROLLER</h2>
+  
+  <div class="input-group">
+    <label>PERIOD NUMBER</label>
+    <input type="number" id="periodInput" placeholder="Enter full period (e.g. 202609201234)">
+  </div>
+
+  <div class="input-group">
+    <label>RESULT NUMBER (0-9)</label>
+    <select id="numberInput">
+      <option value="0">0</option>
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+      <option value="8">8</option>
+      <option value="9">9</option>
+    </select>
+  </div>
+
+  <div class="input-group">
+    <label>SIZE (BIG / SMALL)</label>
+    <select id="sizeInput">
+      <option value="BIG">BIG</option>
+      <option value="SMALL">SMALL</option>
+    </select>
+  </div>
+
+  <button onclick="saveData()">UPDATE SERVER</button>
+  <div id="msg" class="success-msg">Data Saved Successfully! ✓</div>
+</div>
+
+<script>
+  // YAHAN APNA SAME FIREBASE CONFIG DAALNA HAI JO MAIN SCRIPT MEIN DAALA THA
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  const database = firebase.database();
+
+  function saveData() {
+    const period = document.getElementById("periodInput").value.trim();
+    const num = document.getElementById("numberInput").value;
+    const size = document.getElementById("sizeInput").value;
+
+    if(!period) {
+      alert("Please enter a Period Number!");
+      return;
+    }
+
+    // Firebase me data send karne ka code
+    database.ref('predictions/' + period).set({
+      n: num,
+      s: size
+    }).then(() => {
+      // Success Message
+      const msg = document.getElementById("msg");
+      msg.style.display = "block";
+      setTimeout(() => {
+        msg.style.display = "none";
+      }, 3000);
+      
+      // Box clear kar do agli entry ke liye
+      document.getElementById("periodInput").value = "";
+    }).catch((error) => {
+      alert("Error saving data: " + error.message);
+    });
+  }
+</script>
+</body>
+</html>
