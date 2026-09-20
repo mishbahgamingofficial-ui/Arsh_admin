@@ -38,30 +38,36 @@
     position: relative;
   }
 
-  /* ══ ANIMATED BACKGROUND ORBS ══ */
+  /* ══ ANIMATED BACKGROUND ORBS (UPGRADED) ══ */
   .bg-orb {
     position: fixed;
     border-radius: 50%;
     filter: blur(80px);
     z-index: -1;
     opacity: 0.5;
-    animation: floatOrb 12s infinite alternate ease-in-out;
+    animation: floatOrb 15s infinite alternate ease-in-out;
   }
   .orb-1 { width: 350px; height: 350px; background: #8400ff; top: -100px; left: -100px; }
-  .orb-2 { width: 300px; height: 300px; background: #0A84FF; bottom: 50px; right: -100px; animation-delay: -5s; }
-  .orb-3 { width: 200px; height: 200px; background: #30D158; top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0.2; }
+  .orb-2 { width: 300px; height: 300px; background: #0A84FF; bottom: 50px; right: -100px; animation-delay: -5s; animation-direction: alternate-reverse; }
+  .orb-3 { width: 250px; height: 250px; background: #30D158; top: 40%; left: 50%; transform: translate(-50%, -50%); opacity: 0.15; animation: centerOrb 20s infinite linear; }
 
   @keyframes floatOrb {
-    0% { transform: translateY(0px) scale(1); }
-    100% { transform: translateY(40px) scale(1.1); }
+    0% { transform: translateY(0px) rotate(0deg) scale(1); }
+    50% { transform: translateY(30px) rotate(180deg) scale(1.05); }
+    100% { transform: translateY(-20px) rotate(360deg) scale(1.1); }
+  }
+  @keyframes centerOrb {
+    0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+    50% { transform: translate(-40%, -60%) rotate(180deg) scale(1.2); }
+    100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); }
   }
 
   /* ══ HEADER ══ */
-  .header { text-align: center; margin-bottom: 35px; animation: fadeInDown 0.8s ease; width: 100%; max-width: 420px; }
+  .header { text-align: center; margin-bottom: 35px; animation: fadeInDown 0.8s ease backwards; width: 100%; max-width: 420px; }
   .header h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
   .header p { font-size: 13px; color: var(--text-muted); font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; }
 
-  /* ══ PREMIUM GLASS CARDS ══ */
+  /* ══ PREMIUM GLASS CARDS (STAGGERED ENTRY) ══ */
   .glass-card {
     background: var(--glass-bg);
     backdrop-filter: blur(35px);
@@ -73,17 +79,26 @@
     max-width: 420px;
     margin-bottom: 25px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.2);
-    animation: fadeInUp 0.8s ease;
+    animation: fadeInUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) backwards;
   }
+  .card-1 { animation-delay: 0.1s; }
+  .card-2 { animation-delay: 0.3s; }
   
   .card-title {
     font-size: 15px; font-weight: 700; color: var(--text-main); margin-bottom: 22px;
     display: flex; align-items: center; gap: 10px;
   }
+  
+  /* FLOATING ICONS */
   .card-icon {
     width: 32px; height: 32px; background: rgba(255,255,255,0.1); border-radius: 10px;
     display: flex; align-items: center; justify-content: center; font-size: 16px;
     box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
+    animation: floatIcon 3s ease-in-out infinite;
+  }
+  @keyframes floatIcon {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
   }
 
   /* ══ IOS SEGMENTED CONTROL ══ */
@@ -96,7 +111,7 @@
     flex: 1; text-align: center; padding: 12px 0; font-size: 13px; font-weight: 600;
     color: var(--text-muted); cursor: pointer; transition: 0.3s; z-index: 2;
   }
-  .segmented-control input:checked + label { color: #fff; }
+  .segmented-control input:checked + label { color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
   .slider {
     position: absolute; top: 4px; left: 4px; height: calc(100% - 8px); width: calc(50% - 4px);
     background: rgba(255, 255, 255, 0.2); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);
@@ -104,31 +119,50 @@
   }
   #modeManual:checked ~ .slider { transform: translateX(100%); }
 
-  /* ══ INPUTS ══ */
+  /* ══ INPUTS (GLOW FOCUS) ══ */
   .input-group { margin-bottom: 18px; }
-  .input-group label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 10px; margin-left: 6px; font-weight: 500; }
+  .input-group label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 10px; margin-left: 6px; font-weight: 500; transition: 0.3s; }
   .live-tag { color: var(--ios-green); font-size: 10px; font-weight: 700; background: rgba(48,209,88,0.15); padding: 2px 8px; border-radius: 10px; border: 1px solid rgba(48,209,88,0.3); animation: pulseTag 1.5s infinite alternate; }
   
   input, select {
     width: 100%; padding: 16px 18px; background: rgba(0, 0, 0, 0.3);
     border: 1.5px solid var(--glass-border); color: #fff; border-radius: 16px;
-    font-size: 16px; font-weight: 600; transition: 0.3s; outline: none; appearance: none;
+    font-size: 16px; font-weight: 600; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); outline: none; appearance: none;
     box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);
   }
-  input:focus, select:focus { border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.08); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15); }
+  
+  @keyframes inputGlow {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.1); }
+    50% { box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.25); }
+  }
+  input:focus, select:focus { border-color: var(--ios-blue); background: rgba(10, 132, 255, 0.08); animation: inputGlow 2s infinite; transform: scale(1.02); }
   
   select { background-image: url('data:image/svg+xml;utf8,<svg fill="%23FFFFFF" height="24" viewBox="0 0 24 24" width="24" opacity="0.6" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position-x: 95%; background-position-y: 50%; }
   select option { background: #1c1c1e; color: #fff; }
 
-  /* ══ BUTTONS ══ */
+  /* ══ BUTTONS (PULSING ANIMATION) ══ */
   .ios-btn {
     width: 100%; padding: 18px; background: linear-gradient(180deg, #1C93FF, var(--ios-blue));
     border: 1px solid rgba(255,255,255,0.2); border-top: 1px solid rgba(255,255,255,0.4);
     color: #fff; font-size: 16px; font-weight: 700; border-radius: 16px; cursor: pointer;
     box-shadow: 0 8px 20px var(--ios-blue-glow); transition: 0.2s cubic-bezier(0.25, 1, 0.5, 1); margin-top: 10px;
+    position: relative; overflow: hidden;
   }
-  .ios-btn:active { transform: scale(0.96); box-shadow: 0 4px 10px var(--ios-blue-glow); }
-  .ios-btn.green { background: linear-gradient(180deg, #3EE167, var(--ios-green)); box-shadow: 0 8px 20px var(--ios-green-glow); }
+  .ios-btn:active { transform: scale(0.95); box-shadow: 0 4px 10px var(--ios-blue-glow); }
+  
+  .ios-btn.blue { animation: btnPulseBlue 2.5s infinite; }
+  .ios-btn.green { background: linear-gradient(180deg, #3EE167, var(--ios-green)); animation: btnPulseGreen 2.5s infinite; }
+
+  @keyframes btnPulseBlue {
+    0% { box-shadow: 0 8px 20px var(--ios-blue-glow), 0 0 0 0 rgba(10, 132, 255, 0.4); }
+    70% { box-shadow: 0 8px 20px var(--ios-blue-glow), 0 0 0 12px rgba(10, 132, 255, 0); }
+    100% { box-shadow: 0 8px 20px var(--ios-blue-glow), 0 0 0 0 rgba(10, 132, 255, 0); }
+  }
+  @keyframes btnPulseGreen {
+    0% { box-shadow: 0 8px 20px var(--ios-green-glow), 0 0 0 0 rgba(48, 209, 88, 0.4); }
+    70% { box-shadow: 0 8px 20px var(--ios-green-glow), 0 0 0 12px rgba(48, 209, 88, 0); }
+    100% { box-shadow: 0 8px 20px var(--ios-green-glow), 0 0 0 0 rgba(48, 209, 88, 0); }
+  }
 
   /* ══ TOAST NOTIFICATION ══ */
   #toast {
@@ -138,13 +172,14 @@
     font-size: 14px; font-weight: 600; color: #fff; box-shadow: 0 15px 30px rgba(0,0,0,0.4);
     transition: top 0.4s cubic-bezier(0.25, 1, 0.5, 1); z-index: 9999; display: flex; align-items: center; gap: 12px;
   }
-  #toast.show { top: 40px; }
+  #toast.show { top: 40px; animation: gentleShake 0.4s ease forwards; }
   .toast-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; background: var(--ios-green); color: #000; box-shadow: 0 0 10px var(--ios-green); }
   #toast.error .toast-icon { background: var(--ios-red); color: #fff; box-shadow: 0 0 10px var(--ios-red); }
 
+  @keyframes gentleShake { 0% { transform: translateX(-50%); } 25% { transform: translateX(-52%); } 50% { transform: translateX(-48%); } 75% { transform: translateX(-51%); } 100% { transform: translateX(-50%); } }
   @keyframes pulseTag { 0% { opacity: 0.7; box-shadow: 0 0 0 rgba(48,209,88,0); } 100% { opacity: 1; box-shadow: 0 0 8px rgba(48,209,88,0.6); } }
-  @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeInDown { from { opacity: 0; transform: translateY(-30px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 
 </style>
 </head>
@@ -163,8 +198,8 @@
     <p>Admin Control Center</p>
   </div>
 
-  <!-- SECTION 1: LIVE GAME PREDICTION -->
-  <div class="glass-card">
+  <!-- SECTION 1: LIVE GAME PREDICTION (STAGGERED CARD 1) -->
+  <div class="glass-card card-1">
     <div class="card-title"><div class="card-icon">🚀</div> Live Injector</div>
     
     <!-- MODE TOGGLE -->
@@ -203,11 +238,11 @@
       </div>
     </div>
 
-    <button class="ios-btn" onclick="savePrediction()">Push Signal</button>
+    <button class="ios-btn blue" onclick="savePrediction()">Push Signal</button>
   </div>
 
-  <!-- SECTION 2: SYSTEM CONFIG -->
-  <div class="glass-card">
+  <!-- SECTION 2: SYSTEM CONFIG (STAGGERED CARD 2) -->
+  <div class="glass-card card-2">
     <div class="card-title"><div class="card-icon">⚙️</div> Global Settings</div>
     
     <div class="input-group">
@@ -289,9 +324,7 @@
         if (cur !== currentLivePeriod) {
           currentLivePeriod = cur;
           
-          // API wale period number ko -1 kar diya gaya hai
           let previousPeriod = (BigInt(cur) - 1n).toString();
-          
           document.getElementById('periodInput').value = previousPeriod;
         }
       }
