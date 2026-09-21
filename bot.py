@@ -1,43 +1,42 @@
 import os
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask
 import threading
 
 # Tokens Render ke environment variables se aayenge
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_ID = os.environ.get('ADMIN_ID') # Tumhara Telegram ID
+ADMIN_ID = os.environ.get('ADMIN_ID') # Tera Telegram ID
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
 
 # ==========================================
-# 1. START COMMAND
+# 1. START COMMAND (Keyboard ki jagah par Button)
 # ==========================================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
+    # Tune jaisa text manga tha bilkul waisa hi
     welcome_text = """
-<b>Hello Welcome To Our Gift Code bot !!</b> 🎁
+<b>Hello Welcome To Our Gift Code bot !!</b> ✅ 
 
-Get Upto 200 Rs Gift Code 💸
-
-⚠️ Free Gift Code Upto 200Rs Sabhi Condition Ho Proper Follow Krna Vrna Aapko Code nhi Milega !! 
-
-👇 <b>Click below to claim your code:</b>
+Get Upto 200 Rs Gift Code ✅
     """
     
-    markup = InlineKeyboardMarkup()
-    claim_btn = InlineKeyboardButton("🎁 Claim Gift Code", callback_data="claim_code")
+    # Typing keyboard ki jagah bada button laane ke liye ReplyKeyboardMarkup
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
+    claim_btn = KeyboardButton("🎁 Claim Gift Code")
     markup.add(claim_btn)
 
+    # Message ke sath keyboard wala button bhej diya
     bot.reply_to(message, welcome_text, reply_markup=markup)
 
 
 # ==========================================
-# 2. CLAIM CODE CLICK (Exact Client Format)
+# 2. CLAIM CODE BUTTON CLICK HANDLER
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data == 'claim_code')
-def handle_claim_button(call):
-    # Client ka exact text aur emojis
+# Jab user keyboard ki jagah wale "🎁 Claim Gift Code" par touch karega
+@bot.message_handler(func=lambda message: message.text == "🎁 Claim Gift Code")
+def handle_claim_button(message):
     claim_text = """
 Join Channel And Make Account With This Link ✅
 
@@ -48,18 +47,12 @@ Gift code Link ✅ 🚀
 http://www.tashanwin.co/#/register?invitationCode=885886606870
     """
     
+    # Ab iske aage ke process ke liye wapas Inline Button (message ke niche wala)
     markup = InlineKeyboardMarkup(row_width=1)
-    # Client ki demand wala button
     uid_btn = InlineKeyboardButton("Submit Uid For Checking 👇", callback_data="ask_uid")
     markup.add(uid_btn)
     
-    try:
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
-                              text=claim_text, reply_markup=markup, disable_web_page_preview=True)
-    except Exception:
-        pass 
-        
-    bot.answer_callback_query(call.id)
+    bot.send_message(message.chat.id, claim_text, reply_markup=markup, disable_web_page_preview=True)
 
 
 # ==========================================
@@ -76,7 +69,8 @@ def handle_ask_uid(call):
 # ==========================================
 @bot.message_handler(content_types=['photo', 'text'])
 def handle_verification(message):
-    if message.text and message.text.startswith('/'):
+    # Commands aur us Claim button ke text ko ignore karne ke liye
+    if message.text and (message.text.startswith('/') or message.text == "🎁 Claim Gift Code"):
         return
 
     username = f"@{message.from_user.username}" if message.from_user.username else "No Username"
@@ -84,7 +78,6 @@ def handle_verification(message):
 
     # Agar user Text (UID) bhejta hai
     if message.text:
-        # Client ka exact reply message
         uid_reply = """
 Done Wait Your Uid Checking ✅
 
@@ -92,7 +85,7 @@ Minimum 200+ Deposit And Also Send Screenshot And Get 500Rs gift Code !! 🚀
         """
         bot.reply_to(message, uid_reply)
         
-        # Admin ko UID forward
+        # Admin ko UID forward hogi
         if ADMIN_ID:
             admin_msg = f"🆕 <b>New UID Submission</b>\n\n{user_info}\n\n📝 <b>UID Submitted:</b> <code>{message.text}</code>"
             try:
@@ -104,7 +97,7 @@ Minimum 200+ Deposit And Also Send Screenshot And Get 500Rs gift Code !! 🚀
     elif message.photo:
         bot.reply_to(message, "✅ <b>Screenshot Received!</b>\nPlease wait while we verify your UID and deposit.")
         
-        # Admin ko Screenshot forward
+        # Admin ko Screenshot forward hogi
         if ADMIN_ID:
             photo_id = message.photo[-1].file_id 
             admin_caption = f"🆕 <b>New Payment Screenshot</b>\n\n{user_info}"
