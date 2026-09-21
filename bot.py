@@ -1,6 +1,6 @@
 import os
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from flask import Flask
 import threading
 
@@ -12,33 +12,62 @@ ADMIN_ID = os.environ.get('ADMIN_ID')
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
 
-# User kis step par hai, ye yaad rakhne ke liye Dictionary
+# State tracking & Message tracking for Auto-Delete
 user_states = {}
+last_bot_msg = {} # Bot ke purane message yaad rakhne ke liye
 
 # ==========================================
-# STEP 1: WELCOME MESSAGE (Pehla Padhao)
+# AUTO-DELETE HELPER FUNCTIONS
+# ==========================================
+def clean_previous_and_send(chat_id, text, markup=None):
+    """Ye function purana message delete karke naya bhejega"""
+    # 1. Purana bot ka message delete karo
+    if chat_id in last_bot_msg:
+        try:
+            bot.delete_message(chat_id, last_bot_msg[chat_id])
+        except:
+            pass # Agar message pehle hi delete ho chuka ho toh error na aaye
+
+    # 2. Naya message bhejo aur uska ID save kar lo
+    try:
+        msg = bot.send_message(chat_id, text, reply_markup=markup, disable_web_page_preview=True)
+        last_bot_msg[chat_id] = msg.message_id
+    except Exception as e:
+        print("Send error:", e)
+
+def delete_user_msg(message):
+    """Ye function user ka bheja hua text/command delete karega"""
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+    except:
+        pass
+
+
+# ==========================================
+# STEP 1: WELCOME MESSAGE
 # ==========================================
 @bot.message_handler(commands=['start'])
 def step1_welcome(message):
     chat_id = message.chat.id
-    user_states[chat_id] = 'step1' # User abhi step 1 par hai
+    user_states[chat_id] = 'step1'
+    delete_user_msg(message) # User ka '/start' delete kar do
     
     text = "<b>Hello Welcome To Our Gift Code bot !!</b> ✅\n\nGet Upto 200 Rs Gift Code ✅"
     
-    markup = InlineKeyboardMarkup()
-    btn = InlineKeyboardButton("🎁 Claim Gift Code", callback_data="goto_step2")
-    markup.add(btn)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
+    markup.add(KeyboardButton("🎁 Claim Gift Code"))
     
-    bot.reply_to(message, text, reply_markup=markup)
+    clean_previous_and_send(chat_id, text, markup)
 
 
 # ==========================================
-# STEP 2: REGISTER LINKS (Dusra Padhao)
+# STEP 2: REGISTER LINKS
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data == 'goto_step2')
-def step2_register(call):
-    chat_id = call.message.chat.id
-    user_states[chat_id] = 'step2' # User ab step 2 par aa gaya
+@bot.message_handler(func=lambda message: message.text == "🎁 Claim Gift Code")
+def step2_register(message):
+    chat_id = message.chat.id
+    user_states[chat_id] = 'step2'
+    delete_user_msg(message) # User ne jo button dabaya wo delete kar do
     
     text = """Join Channel And Make Account With This Link ✅
 
@@ -48,43 +77,39 @@ https://t.me/+8CcPYcK-7_JlZDk1
 Gift code Link ✅ 🚀
 http://www.tashanwin.co/#/register?invitationCode=885886606870"""
     
-    markup = InlineKeyboardMarkup()
-    btn = InlineKeyboardButton("Submit Uid For Checking 👇", callback_data="goto_step3")
-    markup.add(btn)
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
+    markup.add(KeyboardButton("Submit Uid For Checking 👇"))
     
-    # MAGIC YAHAN HAI: Purana message badal jayega taaki chat me kachra na ho
-    bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, 
-                          text=text, reply_markup=markup, disable_web_page_preview=True)
+    clean_previous_and_send(chat_id, text, markup)
 
 
 # ==========================================
-# STEP 3: ASK FOR UID (Teesra Padhao)
+# STEP 3: ASK FOR UID
 # ==========================================
-@bot.callback_query_handler(func=lambda call: call.data == 'goto_step3')
-def step3_ask_uid(call):
-    chat_id = call.message.chat.id
-    user_states[chat_id] = 'waiting_for_uid' # Bot ab user ke reply ka wait karega
+@bot.message_handler(func=lambda message: message.text == "Submit Uid For Checking 👇")
+def step3_ask_uid(message):
+    chat_id = message.chat.id
+    user_states[chat_id] = 'waiting_for_uid'
+    delete_user_msg(message) # Button delete kar do
     
     text = "👇 <b>Please type and send your UID here:</b>"
     
-    # Message badal kar UID mangega
-    bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text=text)
+    markup = ReplyKeyboardRemove() # Keyboard hata do UID type karne ke liye
+    clean_previous_and_send(chat_id, text, markup)
 
 
 # ==========================================
 # FINAL STEP: ALL SET & ADMIN FORWARD
 # ==========================================
-# Ye function tabhi chalega jab user "waiting_for_uid" state me hoga
-@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == 'waiting_for_uid')
+@bot.message_handler(func=lambda message: user_states.get(message.chat.id) == 'waiting_for_uid' and not message.text.startswith('/'))
 def final_step_receive(message):
     chat_id = message.chat.id
-    user_states[chat_id] = 'completed' # Flow khatam
+    user_states[chat_id] = 'completed'
+    delete_user_msg(message) # User ki type ki hui UID chat se delete kar do (Security/Clean chat)
     
-    # Client ko final confirmation
     reply_text = "Done Wait Your Uid Checking ✅\n\nMinimum 200+ Deposit And Also Send Screenshot And Get 500Rs gift Code !! 🚀"
-    bot.reply_to(message, reply_text)
+    clean_previous_and_send(chat_id, reply_text, ReplyKeyboardRemove())
     
-    # Admin ko chup-chap details forward kar do
     if ADMIN_ID:
         try:
             admin_text = f"🆕 <b>NEW UID SUBMITTED</b>\n\n👤 User: {message.from_user.first_name}\n🆔 UID: <code>{message.text}</code>"
@@ -93,11 +118,15 @@ def final_step_receive(message):
             pass
 
 # ==========================================
-# SCREENSHOT HANDLER (Agar photo bhejta hai)
+# SCREENSHOT HANDLER
 # ==========================================
 @bot.message_handler(content_types=['photo'])
 def handle_screenshot(message):
-    bot.reply_to(message, "✅ <b>Screenshot Received!</b>\nPlease wait while we verify.")
+    chat_id = message.chat.id
+    delete_user_msg(message) # User ki photo chat se delete kardo
+    
+    clean_previous_and_send(chat_id, "✅ <b>Screenshot Received!</b>\nPlease wait while we verify.")
+    
     if ADMIN_ID:
         try:
             bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"📸 <b>NEW PAYMENT PROOF</b>\n👤 User: {message.from_user.first_name}")
@@ -106,13 +135,13 @@ def handle_screenshot(message):
 
 
 # ==========================================
-# RENDER SERVER (Zinda rakhne ke liye)
+# RENDER SERVER
 # ==========================================
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "Bot is running perfectly step-by-step!"
+    return "Auto-Delete Bot is running flawlessly!"
 
 def run_server():
     port = int(os.environ.get('PORT', 8080))
