@@ -1,6 +1,6 @@
 import os
 import telebot
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, ChatJoinRequest
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from flask import Flask
 import threading
 
@@ -18,9 +18,11 @@ user_states = {}
 # ==========================================
 # 2. CHANNEL JOIN REQUEST HANDLER
 # ==========================================
-# Jab koi join request bhejega toh direct ye chalega
 @bot.chat_join_request_handler()
-def handle_join_request(request: ChatJoinRequest):
+def handle_join_request(request):
+    # Yeh line Render logs me print hogi, taaki tujhe pata chale request aayi hai
+    print(f"✅ JOIN REQUEST AAYI HAI FROM: {request.from_user.first_name}") 
+    
     user_id = request.from_user.id
     user_states[user_id] = 'step1'
     
@@ -30,12 +32,13 @@ def handle_join_request(request: ChatJoinRequest):
     markup.add(KeyboardButton("🎁 Claim Gift Code"))
     
     try:
-        # User ko DM me message bhejega
+        # User ko DM me message bhejo
         bot.send_message(user_id, text, reply_markup=markup)
-        # Automatic channel me approve bhi kar dega
+        # Automatic channel me approve kar do
         bot.approve_chat_join_request(request.chat.id, user_id)
+        print("✅ Message successfully chala gaya!")
     except Exception as e:
-        print(f"Join Request Error: {e}")
+        print(f"❌ Error: Message nahi gaya - {e}")
 
 # ==========================================
 # 3. START COMMAND (Pehla Message)
@@ -89,7 +92,7 @@ def step3_ask_uid(message):
     bot.reply_to(message, text, reply_markup=markup)
 
 # ==========================================
-# 6. RECEIVE UID / SCREENSHOT & FORWARD TO ADMIN
+# 6. UID & SCREENSHOT RECEIVER
 # ==========================================
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_final_submission(message):
@@ -97,39 +100,29 @@ def handle_final_submission(message):
     if message.text and (message.text.startswith('/') or message.text in ["🎁 Claim Gift Code", "Submit Uid For Checking 👇"]):
         return
 
-    # Admin ko user ki detail dene ka format
+    # Admin ko forward karne ka format
     user_info = f"👤 User: {message.from_user.first_name}\n🆔 User ID: <code>{message.from_user.id}</code>"
     
-    # Agar Text (UID) bheja hai
     if message.text:
         bot.reply_to(message, "Done Wait Your Uid Checking ✅\n\nMinimum 200+ Deposit And Also Send Screenshot And Get 500Rs gift Code !! 🚀")
-        
-        # Admin ko direct UID bhej do
         if ADMIN_ID:
-            try:
-                bot.send_message(ADMIN_ID, f"🆕 <b>NEW UID SUBMITTED</b>\n\n{user_info}\n📝 UID: <code>{message.text}</code>")
-            except Exception as e:
-                print("Admin UID Error:", e)
+            try: bot.send_message(ADMIN_ID, f"🆕 <b>NEW UID SUBMITTED</b>\n\n{user_info}\n📝 UID: <code>{message.text}</code>")
+            except: pass
                 
-    # Agar Photo (Screenshot) bheja hai
     elif message.photo:
         bot.reply_to(message, "✅ <b>Screenshot Received!</b>\nPlease wait while we verify.")
-        
-        # Admin ko Photo bhej do
         if ADMIN_ID:
-            try:
-                bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"📸 <b>NEW PAYMENT PROOF</b>\n\n{user_info}")
-            except Exception as e:
-                print("Admin Photo Error:", e)
+            try: bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"📸 <b>NEW PAYMENT PROOF</b>\n\n{user_info}")
+            except: pass
 
 # ==========================================
-# 7. WEB SERVER (Render pe bot zinda rakhne ke liye)
+# 7. WEB SERVER & BOT LAUNCHER
 # ==========================================
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return "Bot is Live and Running smoothly!"
+    return "Bot is Live!"
 
 def run_server():
     port = int(os.environ.get('PORT', 8080))
@@ -139,5 +132,8 @@ if __name__ == "__main__":
     threading.Thread(target=run_server).start()
     print("Bot is Started...")
     
-    # Ye line sabse zaroori hai (Join request allow karne ke liye)
+    # YE LINE SABSE ZAROORI HAI - Purane latke hue connections clean karne ke liye
+    bot.remove_webhook()
+    
+    # Sirf yahi 2 updates bot ko allow karenge
     bot.infinity_polling(allowed_updates=['message', 'chat_join_request'])
