@@ -10,8 +10,9 @@ from flask import Flask
 # ==========================================
 # 1. BOT & MULTI-ADMIN SETUP
 # ==========================================
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_IDS_STR = os.environ.get('ADMIN_IDS', '12345678') # Comma separated admin IDs
+# Apne Environment Variables me BOT_TOKEN aur ADMIN_IDS set karein
+BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE') 
+ADMIN_IDS_STR = os.environ.get('ADMIN_IDS', '12345678') # Comma separated admin IDs (e.g., '1111,2222')
 ADMIN_IDS = [int(aid.strip()) for aid in ADMIN_IDS_STR.split(',') if aid.strip().isdigit()]
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode='HTML')
@@ -73,7 +74,6 @@ def get_user_link(user):
     if user.username:
         return f"@{user.username}"
     else:
-        # Direct Telegram Profile Link
         return f"<a href='tg://user?id={user.id}'>{user.first_name}</a>"
 
 
@@ -108,7 +108,8 @@ def get_main_keyboard(user_id):
 
 def get_admin_keyboard():
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(KeyboardButton("📢 Broadcast"), KeyboardButton("👥 Users"), KeyboardButton("💾 Backup DB"))
+    markup.add(KeyboardButton("📢 Broadcast"), KeyboardButton("👥 Users"))
+    markup.add(KeyboardButton("💾 Backup DB"), KeyboardButton("🔄 Restore DB"))
     markup.add(KeyboardButton("🔙 Main Menu"))
     return markup
 
@@ -121,7 +122,6 @@ def handle_join_request(request):
     user = request.from_user
     add_user(user.id, user.username or "", user.first_name)
     
-    # Username ya Direct Link logic yahan use hua hai
     user_identity = get_user_link(user)
     
     alert_text = f"🚨 <b>NEW CHANNEL JOIN REQUEST</b> 🚨\n\n👤 User: {user_identity}\n🆔 ID: <code>{user.id}</code>"
@@ -141,7 +141,7 @@ def handle_join_request(request):
 def send_welcome(message):
     user = message.from_user
     add_user(user.id, user.username or "", user.first_name)
-    user_states[user.id] = 'home'
+    user_states[message.from_user.id] = 'home'
     
     bot.reply_to(message, "<b>Hello Welcome To Our Gift Code bot !!</b> ✅\n\nGet Upto 200 Rs Gift Code ✅", 
                  reply_markup=get_main_keyboard(user.id))
@@ -160,7 +160,7 @@ def back_to_main(message):
 def show_total_users(message):
     bot.reply_to(message, f"👥 <b>Total Users:</b> {len(get_all_users())}")
 
-# Admin can request MANUAL backup anytime
+# --- MANUAL BACKUP ---
 @bot.message_handler(func=lambda msg: msg.text == "💾 Backup DB" and msg.from_user.id in ADMIN_IDS)
 def send_manual_backup(message):
     try:
@@ -169,6 +169,39 @@ def send_manual_backup(message):
     except:
         bot.reply_to(message, "Error creating backup.")
 
+# --- RESTORE DATABASE ---
+@bot.message_handler(func=lambda msg: msg.text == "🔄 Restore DB" and msg.from_user.id in ADMIN_IDS)
+def ask_for_restore_file(message):
+    user_states[message.from_user.id] = 'waiting_for_restore'
+    bot.reply_to(message, "👇 <b>Please send the backup database file (.db) to restore.</b>\n<i>(Type 'Cancel' to stop)</i>", reply_markup=ReplyKeyboardRemove())
+
+@bot.message_handler(content_types=['document'], func=lambda msg: msg.from_user.id in ADMIN_IDS and user_states.get(msg.from_user.id) == 'waiting_for_restore')
+def process_restore_file(message):
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        with db_lock:
+            with open(DB_FILE, 'wb') as new_file:
+                new_file.write(downloaded_file)
+        
+        user_states[message.from_user.id] = 'admin_panel'
+        total_users = len(get_all_users())
+        
+        bot.reply_to(message, f"✅ <b>Database Restored Successfully!</b>\n👥 Total users now: {total_users}", reply_markup=get_admin_keyboard())
+    except Exception as e:
+        bot.reply_to(message, f"❌ <b>Error restoring database:</b> {e}", reply_markup=get_admin_keyboard())
+        user_states[message.from_user.id] = 'admin_panel'
+
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'waiting_for_restore' and msg.text)
+def process_restore_cancel(message):
+    if message.text.lower() == 'cancel':
+        user_states[message.from_user.id] = 'admin_panel'
+        bot.reply_to(message, "❌ Restore Cancelled.", reply_markup=get_admin_keyboard())
+    else:
+        bot.reply_to(message, "⚠️ Please send the document (.db file) or type 'Cancel'.")
+
+# --- BROADCAST SYSTEM ---
 @bot.message_handler(func=lambda msg: msg.text == "📢 Broadcast" and msg.from_user.id in ADMIN_IDS)
 def ask_broadcast_msg(message):
     user_states[message.from_user.id] = 'waiting_for_broadcast'
@@ -187,7 +220,10 @@ def process_broadcast(message):
     def run_broadcast(msg_text, u_list):
         success = 0
         for uid in u_list:
-            try: bot.send_message(uid, msg_text); success += 1; time.sleep(0.05)
+            try: 
+                bot.send_message(uid, msg_text)
+                success += 1
+                time.sleep(0.05) # Anti-Spam Delay
             except: pass
         bot.send_message(message.chat.id, f"📊 <b>Broadcast Complete:</b> {success} users got the message.")
 
@@ -195,7 +231,7 @@ def process_broadcast(message):
 
 
 # ==========================================
-# 8. USER FLOW (3-Step Sequence)
+# 8. USER FLOW (Gift Code Claim)
 # ==========================================
 @bot.message_handler(func=lambda msg: msg.text == "🎁 Claim Gift Code")
 def step2_links(message):
@@ -218,15 +254,14 @@ def step3_ask_uid(message):
 # ==========================================
 @bot.message_handler(content_types=['text', 'photo'])
 def handle_final_submission(message):
-    if message.text and (message.text.startswith('/') or message.text in ["🎁 Claim Gift Code", "Submit Uid For Checking 👇", "⚙️ Admin Panel", "🔙 Main Menu", "👥 Users", "📢 Broadcast", "💾 Backup DB"]):
+    # Ignore commands & buttons
+    if message.text and (message.text.startswith('/') or message.text in ["🎁 Claim Gift Code", "Submit Uid For Checking 👇", "⚙️ Admin Panel", "🔙 Main Menu", "👥 Users", "📢 Broadcast", "💾 Backup DB", "🔄 Restore DB"]):
         return
 
     if user_states.get(message.from_user.id) != 'waiting_for_uid':
         return 
 
-    # SMART USERNAME / DIRECT LINK LOGIC
     user_identity = get_user_link(message.from_user)
-    
     user_info = f"👤 User: {user_identity}\n🆔 ID: <code>{message.from_user.id}</code>"
     
     if message.text:
@@ -240,17 +275,20 @@ def handle_final_submission(message):
         user_states[message.from_user.id] = 'home'
 
 # ==========================================
-# 10. WEB SERVER
+# 10. WEB SERVER (For keeping bot alive 24/7)
 # ==========================================
 app = Flask(__name__)
 @app.route('/')
-def index(): return "Advanced Bot with Auto-Backup is Live!"
+def index(): return "Advanced Bot with Auto-Backup & Restore is Live!"
 
 def run_server():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
-    threading.Thread(target=run_server).start()
+    print("Starting Flask Server...")
+    threading.Thread(target=run_server, daemon=True).start()
+    
+    print("Bot is Polling...")
     bot.remove_webhook()
     bot.infinity_polling(allowed_updates=['message', 'chat_join_request'])
