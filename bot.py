@@ -364,7 +364,7 @@ async def contact_admin_handler(event):
         return
         
     user_chat_state[event.sender_id] = True
-    await event.reply("📝 **Support Session Active** 🟢\n\nAb aap apna message ya screenshot yahan bhej sakte hain. Seedha admin tak pahunch jayega! 👇")
+    await event.reply("📝 **Support Session Active** 🟢\n\nAContact Here - @HarshPushptode1")
 
 async def send_button_forward(event, key):
     uid = event.sender_id
