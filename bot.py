@@ -5,7 +5,7 @@ import json
 import asyncio
 import logging
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from aiohttp import web
@@ -35,7 +35,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
-logger = logging.getLogger("ProBot")
+logger = logging.getLogger("ProBotX")
 
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
@@ -45,13 +45,15 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 START_TIME = time.time()
 
+
 def parse_admin_ids(env_string):
     ids = []
     for uid in env_string.split(","):
         uid = uid.strip()
-        if uid.lstrip('-').isdigit():
+        if uid.lstrip("-").isdigit():
             ids.append(int(uid))
     return ids
+
 
 ROOT_ADMINS = parse_admin_ids(os.environ.get("ADMIN_IDS", "0"))
 ADMIN_IDS = list(ROOT_ADMINS)
@@ -59,39 +61,96 @@ ADMIN_IDS = list(ROOT_ADMINS)
 # ------------------ DATABASE & STATE ------------------
 DB_PATH = Path("bot_data.db")
 
-tracked_users: dict[int, int] = {}      
+tracked_users: dict[int, int] = {}
 blocked_users: set[int] = set()
 banned_users: set[int] = set()
 user_join_dates: dict[int, str] = {}
-saved_messages: dict[int, dict] = {}    
-button_forwards: dict[str, list] = {}   
+user_meta: dict[int, dict] = {}  # {uid: {"referred_by": int, "referrals": int, "last_seen": str, "vip": int}}
+saved_messages: dict[int, dict] = {}
+button_forwards: dict[str, list] = {}
 
 welcome_enabled = True
 animations_enabled = True
+maintenance_mode = False
 broadcast_cancel_flag = False
+bot_username_cache = ""
 
 # Default "👇" रखा है जैसा तेरे इस कोड में था (Admin Panel से बदल भी सकते हो)
 user_menu_text = "👇"
 support_username = "@SAHILOFFICIAL_0"
-force_channel = ""
+force_channels: list[str] = []  # Supports multiple channels!
 banner_config = {"msg_id": 0, "chat_id": 0}
-click_stats = {"prediction": 0, "hack": 0, "support": 0}
+click_stats = {"prediction": 0, "hack": 0, "support": 0, "vip_profile": 0}
+anim_style = "cyberpunk"  # cyberpunk | matrix | quantum | stealth
 
 recently_welcomed: set[int] = set()
 user_chat_state: dict[int, bool] = {}
 admin_chat_state: dict[int, dict] = {}
 auto_replies: dict[str, str] = {}
-admin_msg_map: dict[tuple, list] = {} 
+admin_msg_map: dict[tuple, list] = {}
+rate_limit_bucket: dict[int, list[float]] = {}  # Anti-flood tracking
 
 ADMIN_KB_LABELS = {
     "📊 stats", "⚙️ status", "📢 broadcast", "✉️ send message",
     "🔘 set button", "🗑 clear button", "🔢 set sequence", "🖼️ menu & banner",
     "🔒 force join", "🤖 auto-replies", "👑 manage admins", "🔇 toggle welcome",
-    "📁 backup", "🔄 restore", "🧹 cleanup", "🔍 find user", "panel", "menu", "admin"
+    "📁 backup", "🔄 restore", "🧹 cleanup", "🔍 find user", "🛠 maintenance",
+    "🎬 anim theme", "panel", "menu", "admin"
 }
 
 CANCEL_BTN = [[Button.inline("❌ Cancel Operation", data=b"adm_cancel")]]
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+# ------------------ MULTI-THEME ANIMATION PRESETS ------------------
+ANIM_THEMES = {
+    "cyberpunk": {
+        "hack": [
+            ("⚡ `[ROOT] Connecting to Dark-Node Proxy Server...`\n`[█░░░░░░░░░] 12%`", 0.32),
+            ("🌐 `[BYPASS] Injecting packet spoofing into firewall...`\n`[███░░░░░░░] 34%`", 0.32),
+            ("🔐 `[CRACK] Bypassing SHA-256 Security Matrix...`\n`[█████░░░░░] 58%`", 0.32),
+            ("🧬 `[DECRYPT] Unlocking VIP Number Hack Payload...`\n`[████████░░] 84%`", 0.32),
+            ("📂 `[VERIFIED] Checksum matched! Extracting files...`\n`[██████████] 100%`", 0.32),
+            ("✅ **SUCCESS:** Package extracted securely. Sending now... 🚀", 0.35),
+        ],
+        "prediction": [
+            ("🤖 `[QUANTUM-AI] Booting Neural Prediction Engine v5.0...`\n`[█░░░░░░░░░] 15%`", 0.32),
+            ("📊 `[MARKET-SCAN] Fetching live colour trading history...`\n`[████░░░░░░] 42%`", 0.32),
+            ("🧠 `[DEEP-LEARN] Analyzing 10,000+ winning patterns...`\n`[███████░░░] 71%`", 0.32),
+            ("🔍 `[ACCURACY] Filtering 99.4% high-probability trend...`\n`[█████████░] 93%`", 0.32),
+            ("🎯 `[SIGNAL LOCKED] High-Win Colour Prediction Ready!`\n`[██████████] 100%`", 0.32),
+            ("🎯 **SIGNAL READY:** Forwarding prediction details... 💸", 0.35),
+        ],
+    },
+    "matrix": {
+        "hack": [
+            ("🟢 `01001101 [MATRIX-NODE] Entering Mainframe...`\n`[▓▓░░░░░░░░] 18%`", 0.32),
+            ("🟢 `10110010 [DECODE]Tracing encrypted TCP stream...`\n`[▓▓▓▓░░░░░░] 44%`", 0.32),
+            ("🟢 `01110101 [OVERFLOW] Overriding kernel permissions...`\n`[▓▓▓▓▓▓▓░░░] 76%`", 0.32),
+            ("🟢 `11111111 [ACCESS GRANTED] Dumping VIP Hack Files...`\n`[▓▓▓▓▓▓▓▓▓▓] 100%`", 0.32),
+            ("🔓 **MATRIX UNLOCKED:** Delivering payload... ⚡", 0.35),
+        ],
+        "prediction": [
+            ("🟢 `00101101 [ORACLE-AI] Synchronizing Matrix Seed...`\n`[▓▓░░░░░░░░] 20%`", 0.32),
+            ("🟢 `11010110 [PATTERN] Computing RNG hash sequence...`\n`[▓▓▓▓▓░░░░░] 55%`", 0.32),
+            ("🟢 `01011100 [PREDICT] Next colour outcome isolated...`\n`[▓▓▓▓▓▓▓▓▓░] 92%`", 0.32),
+            ("💎 **ORACLE LOCKED:** Sending VIP Colour Signal... 🚀", 0.35),
+        ],
+    },
+    "quantum": {
+        "hack": [
+            ("⚛️ `[Q-CORE] Initializing 128-Qubit Entanglement...`\n`[▰▱▱▱▱▱▱▱▱▱] 14%`", 0.32),
+            ("🛸 `[TUNNEL] Quantum tunneling past server auth...`\n`[▰▰▰▰▱▱▱▱▱▱] 46%`", 0.32),
+            ("💠 `[SUPERPOSITION] Collapsing key possibilities...`\n`[▰▰▰▰▰▰▰▰▱▱] 82%`", 0.32),
+            ("✨ `[SINGULARITY] VIP Hack Package Materialized!`\n`[▰▰▰▰▰▰▰▰▰▰] 100%`", 0.35),
+        ],
+        "prediction": [
+            ("🌌 `[NEBULA-AI] Calibrating temporal market sensors...`\n`[▰▰▱▱▱▱▱▱▱▱] 22%`", 0.32),
+            ("⚡ `[SYNAPSE] Simulating 1,000,000 trade timelines...`\n`[▰▰▰▰▰▰▱▱▱▱] 64%`", 0.32),
+            ("🔮 `[CONVERGENCE] 99.8% Probability Vector Locked!`\n`[▰▰▰▰▰▰▰▰▰▰] 100%`", 0.35),
+        ],
+    },
+}
+
 
 def get_uptime():
     seconds = int(time.time() - START_TIME)
@@ -104,6 +163,7 @@ def get_uptime():
         return f"{hours}h {minutes}m {seconds}s"
     return f"{minutes}m {seconds}s"
 
+
 def format_eta(seconds: float) -> str:
     if seconds <= 0 or seconds > 86400:
         return "Calculating..."
@@ -112,35 +172,72 @@ def format_eta(seconds: float) -> str:
         return f"{m}m {s}s"
     return f"{s}s"
 
+
+def make_bar(pct: int, length: int = 10) -> str:
+    pct = max(0, min(100, pct))
+    filled = int((pct / 100) * length)
+    return "█" * filled + "░" * (length - filled)
+
+
+def check_rate_limit(uid: int, max_Events: int = 7, window: float = 4.0) -> bool:
+    """Returns True if user is flooding and should be throttled."""
+    if uid in ADMIN_IDS:
+        return False
+    now = time.time()
+    history = rate_limit_bucket.get(uid, [])
+    history = [t for t in history if now - t < window]
+    history.append(now)
+    rate_limit_bucket[uid] = history
+    return len(history) > max_Events
+
+
 # ------------------ ANIMATION ENGINE ------------------
-async def play_animation(event_or_msg, frames: list[tuple[str, float]], is_edit: bool = False, use_reply: bool = True):
-    """Plays a multi-frame cyberpunk animation smoothly."""
+async def play_animation(
+    event_or_msg,
+    frames: list[tuple[str, float]],
+    is_edit: bool = False,
+    use_reply: bool = True,
+):
+    """Plays a multi-frame cyberpunk animation smoothly with FloodWait protection."""
     if is_edit:
         msg = event_or_msg
     else:
-        msg = await (event_or_msg.reply(frames[0][0]) if use_reply else event_or_msg.respond(frames[0][0]))
-        
-    if not animations_enabled:
+        msg = await (
+            event_or_msg.reply(frames[0][0])
+            if use_reply
+            else event_or_msg.respond(frames[0][0])
+        )
+
+    if not animations_enabled or anim_style == "stealth":
         return msg
-        
+
     start_idx = 0 if is_edit else 1
     for i in range(start_idx, len(frames)):
         text_frame, delay = frames[i]
         await asyncio.sleep(delay)
         try:
             await msg.edit(text_frame)
+        except FloodWaitError as e:
+            await asyncio.sleep(min(e.seconds, 2))
         except Exception:
             pass
     return msg
 
+
+# ------------------ DATABASE ENGINE ------------------
 def init_db():
     with sqlite3.connect(str(DB_PATH)) as conn:
-        conn.executescript("""
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 access_hash INTEGER NOT NULL,
                 blocked INTEGER DEFAULT 0,
-                joined_date TEXT
+                joined_date TEXT,
+                referred_by INTEGER DEFAULT 0,
+                referrals INTEGER DEFAULT 0,
+                last_seen TEXT,
+                vip INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS messages (
                 step INTEGER PRIMARY KEY,
@@ -168,16 +265,35 @@ def init_db():
             CREATE TABLE IF NOT EXISTS banned (
                 user_id INTEGER PRIMARY KEY
             );
-        """)
+            """
+        )
+        # Safe schema migration for older bot_data.db files
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(users)")
+        existing_cols = {row[1] for row in cur.fetchall()}
+        migrations = [
+            ("referred_by", "INTEGER DEFAULT 0"),
+            ("referrals", "INTEGER DEFAULT 0"),
+            ("last_seen", "TEXT"),
+            ("vip", "INTEGER DEFAULT 0"),
+        ]
+        for col_name, col_def in migrations:
+            if col_name not in existing_cols:
+                try:
+                    conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+                except Exception:
+                    pass
         return conn
 
+
 def load_from_db():
-    global tracked_users, blocked_users, banned_users, user_join_dates, saved_messages, button_forwards
-    global welcome_enabled, animations_enabled, user_menu_text, support_username, force_channel, banner_config, click_stats, auto_replies, ADMIN_IDS
-    
+    global tracked_users, blocked_users, banned_users, user_join_dates, user_meta, saved_messages, button_forwards
+    global welcome_enabled, animations_enabled, maintenance_mode, user_menu_text, support_username
+    global force_channels, banner_config, click_stats, anim_style, auto_replies, ADMIN_IDS
+
     with sqlite3.connect(str(DB_PATH)) as conn:
         cur = conn.cursor()
-        
+
         cur.execute("SELECT user_id FROM admins")
         for (uid,) in cur.fetchall():
             if uid not in ADMIN_IDS:
@@ -187,67 +303,128 @@ def load_from_db():
         for (uid,) in cur.fetchall():
             banned_users.add(uid)
 
-        cur.execute("SELECT user_id, access_hash, blocked, joined_date FROM users")
-        for uid, hsh, blk, jdate in cur.fetchall():
+        cur.execute(
+            "SELECT user_id, access_hash, blocked, joined_date, referred_by, referrals, last_seen, vip FROM users"
+        )
+        for uid, hsh, blk, jdate, ref_by, refs, lseen, vip_flag in cur.fetchall():
             tracked_users[uid] = hsh
             if jdate:
                 user_join_dates[uid] = jdate[:10]
             if blk:
                 blocked_users.add(uid)
-                
+            user_meta[uid] = {
+                "referred_by": ref_by or 0,
+                "referrals": refs or 0,
+                "last_seen": lseen or (jdate[:10] if jdate else "Unknown"),
+                "vip": int(vip_flag or 0),
+            }
+
         cur.execute("SELECT step, msg_type, text, msg_id, from_chat FROM messages")
         for step, mtype, text, mid, fchat in cur.fetchall():
             saved_messages[step] = {
-                "type": mtype, "text": text, "msg_id": mid, "from_chat": fchat
+                "type": mtype,
+                "text": text,
+                "msg_id": mid,
+                "from_chat": fchat,
             }
-            
+
         cur.execute("SELECT btn_key, msg_id, from_chat FROM button_msgs")
         button_forwards.clear()
         for key, mid, fchat in cur.fetchall():
             if key not in button_forwards:
                 button_forwards[key] = []
             button_forwards[key].append({"msg_id": mid, "from_chat": fchat})
-            
+
         cur.execute("SELECT key, value FROM settings")
         for k, v in cur.fetchall():
-            if k == 'welcome_enabled':
-                welcome_enabled = (v == "1")
-            elif k == 'animations_enabled':
-                animations_enabled = (v == "1")
-            elif k == 'user_menu_text':
+            if k == "welcome_enabled":
+                welcome_enabled = v == "1"
+            elif k == "animations_enabled":
+                animations_enabled = v == "1"
+            elif k == "maintenance_mode":
+                maintenance_mode = v == "1"
+            elif k == "user_menu_text":
                 user_menu_text = v
-            elif k == 'support_username':
+            elif k == "support_username":
                 support_username = v
-            elif k == 'force_channel':
-                force_channel = v
-            elif k == 'banner_config':
-                try: banner_config = json.loads(v)
-                except: pass
-            elif k == 'click_stats':
-                try: click_stats = json.loads(v)
-                except: pass
-            
+            elif k == "anim_style":
+                if v in ("cyberpunk", "matrix", "quantum", "stealth"):
+                    anim_style = v
+            elif k == "force_channel":
+                # Backward compatible with single string or JSON list
+                if v:
+                    try:
+                        parsed = json.loads(v)
+                        if isinstance(parsed, list):
+                            force_channels = [str(x).lstrip("@") for x in parsed if x]
+                        else:
+                            force_channels = [str(v).lstrip("@")]
+                    except Exception:
+                        force_channels = [
+                            ch.strip().lstrip("@") for ch in v.split(",") if ch.strip()
+                        ]
+                else:
+                    force_channels = []
+            elif k == "banner_config":
+                try:
+                    banner_config = json.loads(v)
+                except Exception:
+                    pass
+            elif k == "click_stats":
+                try:
+                    loaded_stats = json.loads(v)
+                    click_stats.update(loaded_stats)
+                except Exception:
+                    pass
+
         cur.execute("SELECT keyword, response FROM auto_replies")
         for kw, resp in cur.fetchall():
             auto_replies[kw] = resp
-            
-    logger.info(f"Loaded {len(tracked_users)} users, {len(auto_replies)} auto-replies, {len(ADMIN_IDS)} admins.")
+
+    logger.info(
+        f"Loaded {len(tracked_users)} users, {len(auto_replies)} auto-replies, {len(ADMIN_IDS)} admins."
+    )
+
 
 def save_user(uid: int, access_hash: int, blocked: bool = False):
-    jdate = user_join_dates.get(uid) or datetime.now().strftime("%Y-%m-%d")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    jdate = user_join_dates.get(uid) or now_str[:10]
     user_join_dates[uid] = jdate
+    meta = user_meta.setdefault(
+        uid, {"referred_by": 0, "referrals": 0, "last_seen": now_str, "vip": 0}
+    )
+    meta["last_seen"] = now_str
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO users (user_id, access_hash, blocked, joined_date) VALUES (?,?,?,?)",
-            (uid, access_hash, int(blocked), jdate),
+            """INSERT OR REPLACE INTO users 
+               (user_id, access_hash, blocked, joined_date, referred_by, referrals, last_seen, vip) 
+               VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                uid,
+                access_hash,
+                int(blocked),
+                jdate,
+                meta["referred_by"],
+                meta["referrals"],
+                meta["last_seen"],
+                meta["vip"],
+            ),
         )
+
 
 def save_message_step(step: int, data: dict):
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO messages (step, msg_type, text, msg_id, from_chat) VALUES (?,?,?,?,?)",
-            (step, data.get("type"), data.get("text"), data.get("msg_id"), data.get("from_chat")),
+            (
+                step,
+                data.get("type"),
+                data.get("text"),
+                data.get("msg_id"),
+                data.get("from_chat"),
+            ),
         )
+
 
 def add_button_config(key: str, msg_id: int, from_chat: int):
     with sqlite3.connect(str(DB_PATH)) as conn:
@@ -256,18 +433,23 @@ def add_button_config(key: str, msg_id: int, from_chat: int):
             (key, msg_id, from_chat),
         )
 
+
 def delete_button_config(key: str):
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.execute("DELETE FROM button_msgs WHERE btn_key=?", (key,))
 
+
 def set_setting(key: str, value: str):
     with sqlite3.connect(str(DB_PATH)) as conn:
-        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (key, value))
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?,?)", (key, value)
+        )
+
 
 def increment_click(key: str):
-    if key in click_stats:
-        click_stats[key] = click_stats.get(key, 0) + 1
-        set_setting("click_stats", json.dumps(click_stats))
+    click_stats[key] = click_stats.get(key, 0) + 1
+    set_setting("click_stats", json.dumps(click_stats))
+
 
 def get_chat_id(reply_msg, event):
     if hasattr(reply_msg, "chat_id") and reply_msg.chat_id:
@@ -280,6 +462,16 @@ def get_chat_id(reply_msg, event):
             return pid.channel_id
     return event.chat_id
 
+
+def get_growth_metrics():
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    joined_today = sum(1 for d in user_join_dates.values() if d == today_str)
+    joined_yesterday = sum(1 for d in user_join_dates.values() if d == yesterday_str)
+    vip_count = sum(1 for m in user_meta.values() if m.get("vip"))
+    return joined_today, joined_yesterday, vip_count
+
+
 # ------------------ CLIENT ------------------
 client = TelegramClient(
     StringSession(SESSION_STRING) if SESSION_STRING else "bot_session",
@@ -287,18 +479,72 @@ client = TelegramClient(
     API_HASH,
 )
 
-# ------------------ WEB SERVER ------------------
+
+# ------------------ CYBERPUNK WEB DASHBOARD & API ------------------
 async def web_handler(request):
-    return web.Response(text=f"🟢 Bot is alive | Uptime: {get_uptime()} | Users: {len(tracked_users)}")
+    active_users = len(tracked_users) - len(blocked_users)
+    j_today, _, vip_cnt = get_growth_metrics()
+    total_clicks = sum(click_stats.values())
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROBOT-X // LIVE TELEMETRY</title>
+<style>
+  body {{
+    background: #07090e; color: #00ffcc; font-family: 'Courier New', monospace;
+    display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;
+  }}
+  .card {{
+    background: #0d111a; border: 1px solid #00ffcc44; border-radius: 12px;
+    padding: 28px; width: 420px; box-shadow: 0 0 30px #00ffcc15;
+  }}
+  h2 {{ margin-top: 0; color: #fff; letter-spacing: 1px; border-bottom: 1px solid #1f293d; padding-bottom: 12px; }}
+  .stat {{ display: flex; justify-content: space-between; margin: 10px 0; font-size: 15px; }}
+  .badge {{ background: #00ffcc22; color: #00ffcc; padding: 2px 8px; border-radius: 6px; font-weight: bold; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>⚡ PROBOT-X TELEMETRY</h2>
+    <div class="stat"><span>System Status:</span><span class="badge">{'MAINTENANCE' if maintenance_mode else 'ONLINE'}</span></div>
+    <div class="stat"><span>Live Uptime:</span><span>{get_uptime()}</span></div>
+    <div class="stat"><span>Total Tracked Users:</span><span>{len(tracked_users)}</span></div>
+    <div class="stat"><span>Active Reachable:</span><span>{active_users}</span></div>
+    <div class="stat"><span>Joined Today:</span><span>+{j_today}</span></div>
+    <div class="stat"><span>VIP Members:</span><span>{vip_cnt}</span></div>
+    <div class="stat"><span>Total Button Clicks:</span><span>{total_clicks}</span></div>
+    <div class="stat"><span>Animation Theme:</span><span>{anim_style.upper()}</span></div>
+  </div>
+</body>
+</html>"""
+    return web.Response(text=html, content_type="text/html")
+
+
+async def health_json_handler(request):
+    return web.json_response(
+        {
+            "status": "maintenance" if maintenance_mode else "online",
+            "uptime": get_uptime(),
+            "total_users": len(tracked_users),
+            "active_users": len(tracked_users) - len(blocked_users),
+            "blocked_users": len(blocked_users),
+            "banned_users": len(banned_users),
+            "clicks": click_stats,
+        }
+    )
+
 
 async def start_web():
     app = web.Application()
-    app.add_routes([web.get("/", web_handler)])
+    app.add_routes([web.get("/", web_handler), web.get("/health", health_json_handler)])
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    logger.info(f"Web server on port {PORT}")
+    logger.info(f"Cyberpunk Web Telemetry Server running on port {PORT}")
+
 
 # ------------------ DECORATORS & KEYBOARDS ------------------
 def admin_only(func):
@@ -307,7 +553,9 @@ def admin_only(func):
             await event.reply("❌ `[Access Denied] Admin privileges required.`")
             return
         await func(event)
+
     return wrapper
+
 
 def get_admin_keyboard():
     return [
@@ -317,76 +565,114 @@ def get_admin_keyboard():
         [Button.text("🔢 Set Sequence", resize=True), Button.text("🖼️ Menu & Banner", resize=True)],
         [Button.text("🔒 Force Join", resize=True), Button.text("🤖 Auto-Replies", resize=True)],
         [Button.text("👑 Manage Admins", resize=True), Button.text("🔍 Find User", resize=True)],
+        [Button.text("🎬 Anim Theme", resize=True), Button.text("🛠 Maintenance", resize=True)],
         [Button.text("📁 Backup", resize=True), Button.text("🔄 Restore", resize=True)],
-        [Button.text("🔇 Toggle Welcome", resize=True), Button.text("🧹 Cleanup", resize=True)]
+        [Button.text("🔇 Toggle Welcome", resize=True), Button.text("🧹 Cleanup", resize=True)],
     ]
 
-# ------------------ FORCE JOIN CHECKER ------------------
+
+# ------------------ MULTI-CHANNEL FORCE JOIN CHECKER ------------------
+async def get_unjoined_channels(uid: int) -> list[str]:
+    if not force_channels or uid in ADMIN_IDS:
+        return []
+    missing = []
+    for ch in force_channels:
+        clean_ch = ch.lstrip("@")
+        try:
+            await client(GetParticipantRequest(channel=clean_ch, participant=uid))
+        except UserNotParticipantError:
+            missing.append(clean_ch)
+        except Exception as e:
+            logger.warning(f"Force join check error (@{clean_ch}): {e}")
+    return missing
+
+
 async def is_user_joined(uid: int) -> bool:
-    if not force_channel or uid in ADMIN_IDS:
-        return True
-    try:
-        clean_ch = force_channel.lstrip("@")
-        await client(GetParticipantRequest(channel=clean_ch, participant=uid))
-        return True
-    except UserNotParticipantError:
-        return False
-    except Exception as e:
-        logger.warning(f"Force join check error ({force_channel}): {e}")
-        return True
+    missing = await get_unjoined_channels(uid)
+    return len(missing) == 0
+
 
 async def send_force_join_prompt(event, key: str):
-    clean_ch = force_channel.lstrip("@")
-    btns = [
-        [Button.url("📢 Join VIP Channel", f"https://t.me/{clean_ch}")],
-        [Button.inline("🔄 Verify & Unlock", data=f"usr_verify_{key}".encode())]
-    ]
+    missing = await get_unjoined_channels(event.sender_id)
+    if not missing:
+        return await send_button_forward(event, key)
+
+    btns = []
+    status_lines = []
+    for idx, ch in enumerate(force_channels, start=1):
+        clean_ch = ch.lstrip("@")
+        is_missing = clean_ch in missing
+        mark = "Not Joined ❌" if is_missing else "Joined ✅"
+        status_lines.append(f"{idx}. `@{clean_ch}` — **{mark}**")
+        if is_missing:
+            btns.append([Button.url(f"📢 Join VIP Channel #{idx} (@{clean_ch})", f"https://t.me/{clean_ch}")])
+
+    btns.append([Button.inline("🔄 Verify & Unlock Package", data=f"usr_verify_{key}".encode())])
+    joined_count = len(force_channels) - len(missing)
+    pct = int((joined_count / max(1, len(force_channels))) * 100)
+
     msg_text = (
         "🚨 **SECURITY CLEARANCE REQUIRED** 🚨\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
-        "1. Official VIP Channel - **Not Joined ❌**\n\n"
-        "👉 *Click **Join VIP Channel** below, then tap **Verify & Unlock** to get your VIP package immediately!*"
+        f"🔓 **Clearance Progress:** `[{make_bar(pct)}] {pct}%`\n\n"
+        + "\n".join(status_lines)
+        + "\n\n👉 *Join the required VIP channel(s) above, then tap **Verify & Unlock Package** to receive your files immediately!*"
     )
     await event.reply(msg_text, buttons=btns)
+
 
 @client.on(events.CallbackQuery(pattern=b"^usr_verify_(hack|prediction)$"))
 async def user_verify_force_join(event):
     key = event.pattern_match.group(1).decode("utf-8")
-    if not await is_user_joined(event.sender_id):
-        return await event.answer("❌ You haven't joined the channel yet! Join first and try again.", alert=True)
-    await event.answer("✅ Verified! Unlocking package...")
+    missing = await get_unjoined_channels(event.sender_id)
+    if missing:
+        return await event.answer(
+            f"❌ Access Denied! You still need to join {len(missing)} channel(s) first.",
+            alert=True,
+        )
+    await event.answer("✅ Clearance Verified! Unlocking VIP package...")
     try:
         await event.delete()
     except Exception:
         pass
     await send_button_forward(event, key, is_callback=True)
 
+
 # ------------------ ADMIN ALERTS (WITH 1-CLICK BUTTONS) ------------------
-async def notify_admins_new_user(user):
+async def notify_admins_new_user(user, referred_by: int = 0):
     first_name = user.first_name or ""
     last_name = user.last_name or ""
     full_name = f"{first_name} {last_name}".strip()
-    
-    safe_name = full_name.replace('[', '').replace(']', '').replace('*', '').replace('_', '').replace('`', '')
+
+    safe_name = (
+        full_name.replace("[", "")
+        .replace("]", "")
+        .replace("*", "")
+        .replace("_", "")
+        .replace("`", "")
+    )
     if not safe_name.strip():
         safe_name = "Unknown User"
-        
+
     linked_name = f"[{safe_name}](tg://user?id={user.id})"
     username_display = f"@{user.username}" if user.username else "❌ `[No Username]`"
-    
+    ref_line = f"🎁 **Referred By:** `{referred_by}`\n" if referred_by else ""
+
     text = (
         f"🚨 **NEW USER CONNECTION** 🚨\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"👤 **Name:** {linked_name}\n"
         f"🔗 **Username:** {username_display}\n"
         f"🆔 **UID:** `{user.id}` *(Tap to copy)*\n"
+        f"{ref_line}"
         f"📊 **Total Users:** `{len(tracked_users)}`\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖"
     )
     btns = [
         [
             Button.inline("✉️ Send DM", data=f"adm_quickdm_{user.id}".encode()),
-            Button.inline("🚫 Ban User", data=f"adm_quickban_{user.id}".encode())
+            Button.inline("🕵️ Dossier", data=f"adm_dossier_{user.id}".encode()),
+            Button.inline("🚫 Ban", data=f"adm_quickban_{user.id}".encode()),
         ]
     ]
     for admin_id in ADMIN_IDS:
@@ -395,34 +681,41 @@ async def notify_admins_new_user(user):
         except Exception:
             pass
 
+
 # ------------------ WELCOME SYSTEM & KEYBOARD MENU ------------------
 async def remove_welcome_cooldown(uid):
     await asyncio.sleep(30)
     recently_welcomed.discard(uid)
+
 
 async def send_user_menu(entity):
     # 🔥 EXACT REPLY KEYBOARD BUTTONS AS REQUESTED 🔥
     btns = [
         [Button.text("⚡️ I Want Number HACK", resize=True)],
         [Button.text("📊 How To Start COLOUR TRADING", resize=True)],
-        [Button.text("🎧 Contact Support", resize=True)]
+        [Button.text("🎧 Contact Support", resize=True)],
     ]
     try:
         safe_text = user_menu_text or "👇"
         if banner_config.get("msg_id") and banner_config.get("chat_id"):
             try:
-                b_msg = await client.get_messages(banner_config["chat_id"], ids=banner_config["msg_id"])
+                b_msg = await client.get_messages(
+                    banner_config["chat_id"], ids=banner_config["msg_id"]
+                )
                 if b_msg and b_msg.media:
-                    await client.send_file(entity, b_msg.media, caption=safe_text, buttons=btns)
+                    await client.send_file(
+                        entity, b_msg.media, caption=safe_text, buttons=btns
+                    )
                     return
             except Exception as banner_err:
                 logger.warning(f"Banner load failed, falling back to text: {banner_err}")
-                
+
         await client.send_message(entity, safe_text, buttons=btns)
     except Exception as e:
         logger.error(f"Menu error: {e}")
 
-async def send_welcome_sequence(user):
+
+async def send_welcome_sequence(user, ref_id: int = 0):
     uid = user.id
     if uid in recently_welcomed or uid in banned_users:
         return
@@ -441,12 +734,43 @@ async def send_welcome_sequence(user):
 
     is_new_user = uid not in tracked_users
     tracked_users[uid] = access_hash
-    
+
+    # Process Referral Reward if brand new user
+    valid_ref = 0
+    if is_new_user and ref_id and ref_id != uid and ref_id in tracked_users:
+        valid_ref = ref_id
+        ref_meta = user_meta.setdefault(
+            ref_id, {"referred_by": 0, "referrals": 0, "last_seen": "Unknown", "vip": 0}
+        )
+        ref_meta["referrals"] = ref_meta.get("referrals", 0) + 1
+        if ref_meta["referrals"] >= 5:
+            ref_meta["vip"] = 1
+        save_user(ref_id, tracked_users[ref_id], blocked=(ref_id in blocked_users))
+        try:
+            await client.send_message(
+                ref_id,
+                f"🎉 **NEW REFERRAL UNLOCKED!**\n"
+                f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+                f"👤 A new user joined using your invite link!\n"
+                f"🏆 **Total Invites:** `{ref_meta['referrals']}`\n"
+                f"💎 **VIP Status:** `{'🟢 UNLOCKED' if ref_meta['vip'] else str(ref_meta['referrals']) + '/5 Invites'}`",
+            )
+        except Exception:
+            pass
+
+    if uid not in user_meta:
+        user_meta[uid] = {
+            "referred_by": valid_ref,
+            "referrals": 0,
+            "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "vip": 0,
+        }
+
     save_user(uid, access_hash, blocked=False)
     blocked_users.discard(uid)
 
     if is_new_user and uid not in ADMIN_IDS:
-        asyncio.create_task(notify_admins_new_user(user))
+        asyncio.create_task(notify_admins_new_user(user, referred_by=valid_ref))
 
     if not welcome_enabled or uid in ADMIN_IDS:
         asyncio.create_task(remove_welcome_cooldown(uid))
@@ -460,7 +784,9 @@ async def send_welcome_sequence(user):
                     await client.get_messages(item["from_chat"], ids=item["msg_id"])
                 except Exception:
                     continue
-                await client.forward_messages(full_user, item["msg_id"], item["from_chat"])
+                await client.forward_messages(
+                    full_user, item["msg_id"], item["from_chat"]
+                )
             else:
                 await client.send_message(full_user, item["text"])
             await asyncio.sleep(0.5)
@@ -472,8 +798,9 @@ async def send_welcome_sequence(user):
             await asyncio.sleep(e.seconds)
         except Exception:
             continue
-            
+
     asyncio.create_task(remove_welcome_cooldown(uid))
+
 
 @client.on(events.ChatAction())
 async def chat_action(event):
@@ -483,6 +810,7 @@ async def chat_action(event):
             await send_welcome_sequence(user)
             if user.id not in ADMIN_IDS:
                 await send_user_menu(user)
+
 
 @client.on(events.Raw(types=UpdateBotChatInviteRequester))
 async def join_request(event):
@@ -496,93 +824,183 @@ async def join_request(event):
     except Exception:
         pass
 
-# ------------------ START COMMAND & PANEL OPENER ------------------
-@client.on(events.NewMessage(pattern=r"(?i)^(/start|panel|menu|admin)$"))
+
+# ------------------ START COMMAND, REFERRAL & VIP PROFILE ------------------
+@client.on(events.NewMessage(pattern=r"(?i)^(/start(?:\s+(.+))?|panel|menu|admin)$"))
 async def start(event):
     if event.sender_id in banned_users:
-        return await event.reply("🚫 **Access Denied:** You have been banned from using this bot.")
+        return await event.reply(
+            "🚫 **Access Denied:** You have been banned from using this bot."
+        )
 
-    raw_cmd = event.raw_text.strip().lower()
-    if raw_cmd in ("panel", "menu", "admin") and event.sender_id not in ADMIN_IDS:
+    raw_cmd = event.raw_text.strip()
+    cmd_lower = raw_cmd.lower()
+    if cmd_lower in ("panel", "menu", "admin") and event.sender_id not in ADMIN_IDS:
         return
 
-    user_chat_state[event.sender_id] = False 
+    if maintenance_mode and event.sender_id not in ADMIN_IDS:
+        return await event.reply(
+            "🛠 **SYSTEM UNDER VIP MAINTENANCE** 🛠\n"
+            "➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            "⚡ Our engineers are upgrading server nodes and AI prediction engines.\n"
+            "⏳ Please check back in a few minutes!"
+        )
+
+    # Parse Referral Deep-Link (`/start ref_123456`)
+    ref_id = 0
+    arg_match = event.pattern_match.group(2)
+    if arg_match and arg_match.startswith("ref_"):
+        ref_str = arg_match.replace("ref_", "").strip()
+        if ref_str.isdigit():
+            ref_id = int(ref_str)
+
+    user_chat_state[event.sender_id] = False
     admin_chat_state.pop(event.sender_id, None)
-    
+
     if event.sender_id in blocked_users:
         blocked_users.discard(event.sender_id)
         access_hash = tracked_users.get(event.sender_id, 0)
         save_user(event.sender_id, access_hash, blocked=False)
-    
+
     if event.sender_id in ADMIN_IDS:
-        boot_msg = await event.reply("⚡ `[ROOT] Authenticating VIP Admin Console...`")
-        await asyncio.sleep(0.3)
+        boot_frames = [
+            ("⚡ `[ROOT] Authenticating Biometric Signature...`\n`[████░░░░░░] 40%`", 0.25),
+            ("🔓 `[ACCESS GRANTED] Mounting Zero-Slash VIP Console...`\n`[██████████] 100%`", 0.25),
+        ]
+        boot_msg = await play_animation(event, boot_frames)
         try:
             await boot_msg.delete()
         except Exception:
             pass
+        j_today, _, vip_cnt = get_growth_metrics()
         admin_panel_text = (
-            "👑 **ZERO-SLASH VIP ADMIN CONSOLE** 👑\n"
+            "👑 **ZERO-SLASH VIP ADMIN CONSOLE v3.0** 👑\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
-            f"🟢 **Uptime:** `{get_uptime()}` | 👥 **Users:** `{len(tracked_users)}`\n"
-            f"🎬 **Animations:** `{'🟢 ON' if animations_enabled else '🔴 OFF'}`\n\n"
+            f"🟢 **Uptime:** `{get_uptime()}` | 👥 **Users:** `{len(tracked_users)}` (`+{j_today}` today)\n"
+            f"🎬 **Theme:** `{anim_style.upper()}` | 🛠 **Maint:** `{'🔴 ON' if maintenance_mode else '🟢 OFF'}`\n"
+            f"💎 **VIPs:** `{vip_cnt}` | 🔒 **Force Ch:** `{len(force_channels)}`\n\n"
             "👇 **Select an operation below to manage your bot seamlessly (Zero `/` needed):**"
         )
         await event.respond(admin_panel_text, buttons=get_admin_keyboard())
     else:
         user = await event.get_sender()
         if user:
-            await send_welcome_sequence(user)
+            await send_welcome_sequence(user, ref_id=ref_id)
             await send_user_menu(user)
 
-# ------------------ USER KEYBOARD BUTTON HANDLERS & ANIMATIONS ------------------
-@client.on(events.NewMessage(func=lambda e: e.is_private and e.text and "number hack" in e.text.lower()))
-async def hack_button_handler(event):
-    if event.sender_id in banned_users:
+
+@client.on(events.NewMessage(pattern=r"(?i)^(/vip|/profile|/myid|/invite)$"))
+async def user_vip_profile_cmd(event):
+    uid = event.sender_id
+    if uid in banned_users:
         return
+    increment_click("vip_profile")
+    meta = user_meta.get(
+        uid, {"referred_by": 0, "referrals": 0, "last_seen": "Today", "vip": 0}
+    )
+    refs = meta.get("referrals", 0)
+    is_vip = bool(meta.get("vip")) or refs >= 5
+    bot_uname = bot_username_cache or "bot"
+    ref_link = f"https://t.me/{bot_uname}?start=ref_{uid}"
+    pct = min(100, int((refs / 5) * 100))
+
+    await event.reply(
+        f"💎 **VIP CYBER DOSSIER & INVITE HUB** 💎\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"🆔 **Your UID:** `{uid}`\n"
+        f"🎖 **Clearance Level:** `{'👑 DIAMOND VIP' if is_vip else '🔹 STANDARD USER'}`\n"
+        f"📅 **Member Since:** `{user_join_dates.get(uid, 'Today')}`\n"
+        f"👥 **Total Referrals:** `{refs} / 5`\n"
+        f"📊 **VIP Progress:** `[{make_bar(pct)}] {pct}%`\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"🔗 **Your Personal Invite Link:**\n`{ref_link}`\n\n"
+        f"🎁 *Invite 5 friends using your link above to unlock automatic **DIAMOND VIP** priority status!*"
+    )
+
+
+# ------------------ USER KEYBOARD BUTTON HANDLERS & ANIMATIONS ------------------
+@client.on(
+    events.NewMessage(
+        func=lambda e: e.is_private and e.text and "number hack" in e.text.lower()
+    )
+)
+async def hack_button_handler(event):
+    if event.sender_id in banned_users or check_rate_limit(event.sender_id):
+        return
+    if maintenance_mode and event.sender_id not in ADMIN_IDS:
+        return await event.reply("🛠 **Bot is currently in Maintenance Mode. Try again shortly!**")
     increment_click("hack")
     if not await is_user_joined(event.sender_id):
         return await send_force_join_prompt(event, "hack")
     await send_button_forward(event, "hack")
 
-@client.on(events.NewMessage(func=lambda e: e.is_private and e.text and "colour trading" in e.text.lower()))
+
+@client.on(
+    events.NewMessage(
+        func=lambda e: e.is_private and e.text and "colour trading" in e.text.lower()
+    )
+)
 async def prediction_button_handler(event):
-    if event.sender_id in banned_users:
+    if event.sender_id in banned_users or check_rate_limit(event.sender_id):
         return
+    if maintenance_mode and event.sender_id not in ADMIN_IDS:
+        return await event.reply("🛠 **Bot is currently in Maintenance Mode. Try again shortly!**")
     increment_click("prediction")
     if not await is_user_joined(event.sender_id):
         return await send_force_join_prompt(event, "prediction")
     await send_button_forward(event, "prediction")
 
-@client.on(events.NewMessage(func=lambda e: e.is_private and e.text and "contact support" in e.text.lower()))
+
+@client.on(
+    events.NewMessage(
+        func=lambda e: e.is_private and e.text and "contact support" in e.text.lower()
+    )
+)
 async def contact_admin_handler(event):
-    if event.sender_id in banned_users or event.sender_id in ADMIN_IDS:
+    if (
+        event.sender_id in banned_users
+        or event.sender_id in ADMIN_IDS
+        or check_rate_limit(event.sender_id)
+    ):
         return
     increment_click("support")
     user_chat_state[event.sender_id] = True
-    
+
     sup_frames = [
-        ("🔐 `[TUNNEL] Initializing 256-bit encrypted support line...`", 0.35),
-        ("📡 `[TUNNEL] Connecting to VIP Admin Server [██████░░░░] 65%`", 0.35),
-        ("🟢 `[CONNECTED] Secure Support Channel Established!`", 0.3)
+        ("🔐 `[TUNNEL] Initializing 256-bit encrypted support line...`\n`[███░░░░░░░] 30%`", 0.32),
+        ("📡 `[TUNNEL] Connecting to VIP Admin Server...`\n`[███████░░░] 72%`", 0.32),
+        ("🟢 `[CONNECTED] Secure Support Channel Established!`\n`[██████████] 100%`", 0.3),
     ]
     anim_msg = await play_animation(event, sup_frames, use_reply=True)
     try:
         await anim_msg.delete()
     except Exception:
         pass
-        
+
+    end_chat_btn = [[Button.inline("🔒 End Support Session", data=b"usr_end_support")]]
     await event.reply(
         f"📝 **Support Section** 🟢\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"👤 **Admin Contact ID** - {support_username}\n\n"
-        f"✍️ *Aap yahan niche seedha apna message, photo ya screenshot bhej sakte hain, wo direct Admin ko deliver ho jayega!*"
+        f"✍️ *Aap yahan niche seedha apna message, photo ya screenshot bhej sakte hain, wo direct Admin ko deliver ho jayega!*",
+        buttons=end_chat_btn,
     )
+
+
+@client.on(events.CallbackQuery(pattern=b"^usr_end_support$"))
+async def user_end_support_cb(event):
+    user_chat_state[event.sender_id] = False
+    await event.answer("🔒 Support tunnel closed.")
+    try:
+        await event.edit("🔒 **Support Session Closed.** Tap **🎧 Contact Support** anytime to reopen.")
+    except Exception:
+        pass
+
 
 async def send_button_forward(event, key, is_callback: bool = False):
     uid = event.sender_id
     config_list = button_forwards.get(key)
-    
+
     if not config_list:
         msg_txt = "⚠️ `[Notice] This module is not configured yet. Please check back later.`"
         if is_callback:
@@ -591,122 +1009,200 @@ async def send_button_forward(event, key, is_callback: bool = False):
             await event.reply(msg_txt)
         return
 
-    if key == "hack":
-        hack_frames = [
-            ("⚡ `[ROOT] Connecting to Dark-Node Proxy Server...`\n`[█░░░░░░░░░] 12%`", 0.35),
-            ("🌐 `[BYPASS] Injecting packet spoofing into firewall...`\n`[███░░░░░░░] 34%`", 0.35),
-            ("🔐 `[CRACK] Bypassing SHA-256 Security Matrix...`\n`[█████░░░░░] 58%`", 0.35),
-            ("🧬 `[DECRYPT] Unlocking VIP Number Hack Payload...`\n`[████████░░] 84%`", 0.35),
-            ("📂 `[VERIFIED] Checksum matched! Extracting files...`\n`[██████████] 100%`", 0.35),
-            ("✅ **SUCCESS:** Package extracted securely. Sending now... 🚀", 0.4)
-        ]
-        status_msg = await play_animation(event, hack_frames, use_reply=not is_callback)
-    elif key == "prediction":
-        pred_frames = [
-            ("🤖 `[QUANTUM-AI] Booting Neural Prediction Engine v4.2...`\n`[█░░░░░░░░░] 15%`", 0.35),
-            ("📊 `[MARKET-SCAN] Fetching live colour trading history...`\n`[████░░░░░░] 42%`", 0.35),
-            ("🧠 `[DEEP-LEARN] Analyzing 10,000+ winning patterns...`\n`[███████░░░] 71%`", 0.35),
-            ("🔍 `[ACCURACY] Filtering 99.4% high-probability trend...`\n`[█████████░] 93%`", 0.35),
-            ("🎯 `[SIGNAL LOCKED] High-Win Colour Prediction Ready!`\n`[██████████] 100%`", 0.35),
-            ("🎯 **SIGNAL READY:** Forwarding prediction details... 💸", 0.4)
-        ]
-        status_msg = await play_animation(event, pred_frames, use_reply=not is_callback)
+    theme_pack = ANIM_THEMES.get(anim_style, ANIM_THEMES["cyberpunk"])
+    if key in theme_pack:
+        status_msg = await play_animation(
+            event, theme_pack[key], use_reply=not is_callback
+        )
     else:
-        status_msg = await (event.respond("⏳ `[sys] Processing request...`") if is_callback else event.reply("⏳ `[sys] Processing request...`"))
+        status_msg = await (
+            event.respond("⏳ `[sys] Processing request...`")
+            if is_callback
+            else event.reply("⏳ `[sys] Processing request...`")
+        )
 
     try:
         sent_count = 0
         for config in config_list:
             admin_id = config["from_chat"]
             admin_hash = tracked_users.get(admin_id, 0)
-            from_peer = InputPeerUser(admin_id, admin_hash) if (admin_id > 0 and admin_hash) else admin_id 
+            from_peer = (
+                InputPeerUser(admin_id, admin_hash)
+                if (admin_id > 0 and admin_hash)
+                else admin_id
+            )
             try:
                 await client.forward_messages(uid, config["msg_id"], from_peer)
                 sent_count += 1
             except Exception as inner_e:
-                logger.warning(f"Could not forward msg {config['msg_id']} for {uid}: {inner_e}")
-            await asyncio.sleep(0.3) 
-            
+                logger.warning(
+                    f"Could not forward msg {config['msg_id']} for {uid}: {inner_e}"
+                )
+            await asyncio.sleep(0.3)
+
         if sent_count == 0:
-            await status_msg.edit("❌ `[Error] Configured messages are unavailable or deleted.`")
+            await status_msg.edit(
+                "❌ `[Error] Configured messages are unavailable or deleted.`"
+            )
         else:
-            await asyncio.sleep(0.8)
-            await status_msg.delete() 
-            
+            await asyncio.sleep(0.6)
+            await status_msg.delete()
+
     except UserIsBlockedError:
         blocked_users.add(uid)
         save_user(uid, tracked_users.get(uid, 0), blocked=True)
     except FloodWaitError as e:
-        await status_msg.edit(f"⏳ Rate limit exceeded. Please wait {e.seconds} seconds.")
+        await status_msg.edit(
+            f"⏳ Rate limit exceeded. Please wait {e.seconds} seconds."
+        )
     except Exception as e:
         logger.error(f"Button {key} error for {uid}: {e}")
         await status_msg.edit("❌ An error occurred. Please try again later.")
+
 
 # =====================================================================
 # 👑 ZERO-SLASH INTERACTIVE ADMIN KEYBOARD HANDLERS (WITH ANIMATIONS)
 # =====================================================================
 
+
 @client.on(events.NewMessage(pattern=r"^(/stats|📊 Stats)$"))
 @admin_only
 async def stats_btn_handler(event):
     admin_chat_state.pop(event.sender_id, None)
-    
+
     scan_frames = [
-        ("📡 `[RADAR] Scanning SQLite Database & User Nodes...`\n`[███░░░░░░░] 30%`", 0.3),
-        ("📊 `[METRICS] Aggregating live click analytics & uptime...`\n`[████████░░] 85%`", 0.3)
+        ("📡 `[RADAR] Scanning SQLite Database & User Nodes...`\n`[███░░░░░░░] 30%`", 0.28),
+        ("📊 `[METRICS] Aggregating live click analytics & growth...`\n`[████████░░] 85%`", 0.28),
     ]
     scan_msg = await play_animation(event, scan_frames)
-    
-    hack_msgs = len(button_forwards.get('hack', []))
-    pred_msgs = len(button_forwards.get('prediction', []))
-    active_count = len(tracked_users) - len(blocked_users)
+
+    hack_msgs = len(button_forwards.get("hack", []))
+    pred_msgs = len(button_forwards.get("prediction", []))
+    total_u = len(tracked_users)
+    active_count = total_u - len(blocked_users)
+    health_pct = int((active_count / max(1, total_u)) * 100) if total_u else 100
+    j_today, j_yest, vip_cnt = get_growth_metrics()
+
     banner_status = "🟢 Set" if banner_config.get("msg_id") else "🔴 None"
-    force_status = f"🟢 @{force_channel}" if force_channel else "🔴 OFF"
+    force_status = (
+        f"🟢 {len(force_channels)} Ch ({', '.join('@'+c for c in force_channels)})"
+        if force_channels
+        else "🔴 OFF"
+    )
     total_clicks = sum(click_stats.values())
-    
+
+    btns = [[Button.inline("🔄 Refresh Live Telemetry", data=b"adm_refresh_stats")]]
+
     msg = (
         "📊 **VIP BOT ANALYTICS & METRICS**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"⏱ **Server Uptime:** `{get_uptime()}`\n"
-        f"👥 **Total Users:** `{len(tracked_users)}` *(🟢 {active_count} Active)*\n"
-        f"🚫 **Blocked / Dead:** `{len(blocked_users)}` | **Banned:** `{len(banned_users)}`\n"
-        f"👑 **Total Admins:** `{len(ADMIN_IDS)}`\n\n"
-        f"📈 **BUTTON CLICK ANALYTICS ({total_clicks} Total):**\n"
+        f"👥 **Total Users:** `{total_u}` *(🟢 {active_count} Active)*\n"
+        f"🔋 **Reachability:** `[{make_bar(health_pct)}] {health_pct}%`\n"
+        f"📈 **Growth:** `+{j_today} Today` | `+{j_yest} Yesterday`\n"
+        f"💎 **VIP Referrers:** `{vip_cnt}` | 👑 **Admins:** `{len(ADMIN_IDS)}`\n"
+        f"🚫 **Blocked:** `{len(blocked_users)}` | **Banned:** `{len(banned_users)}`\n\n"
+        f"🎯 **MODULE CLICK ANALYTICS ({total_clicks} Total):**\n"
         f" ├ ⚡ Number Hack: `{click_stats.get('hack', 0)}` clicks\n"
         f" ├ 📊 Colour Trading: `{click_stats.get('prediction', 0)}` clicks\n"
-        f" └ 🎧 Contact Support: `{click_stats.get('support', 0)}` clicks\n\n"
+        f" ├ 🎧 Contact Support: `{click_stats.get('support', 0)}` clicks\n"
+        f" └ 💎 VIP Dossier: `{click_stats.get('vip_profile', 0)}` views\n\n"
         f"⚙️ **SYSTEM CONFIGURATION:**\n"
         f" ├ 🔊 Welcome: `{'🟢 ON' if welcome_enabled else '🔴 OFF'}` ({len(saved_messages)} steps)\n"
-        f" ├ 🎬 Animations: `{'🟢 ON' if animations_enabled else '🔴 OFF'}`\n"
+        f" ├ 🎬 Anim Theme: `{anim_style.upper()}` (`{'🟢 ON' if animations_enabled else '🔴 OFF'}`)\n"
+        f" ├ 🛠 Maintenance: `{'🔴 ACTIVE' if maintenance_mode else '🟢 OFF'}`\n"
         f" ├ 🖼️ Menu Banner: `{banner_status}`\n"
         f" ├ 🔒 Force Join: `{force_status}`\n"
         f" ├ 🎧 Support ID: `{support_username}`\n"
         f" └ 📁 Files: Hack (`{hack_msgs}`) | Prediction (`{pred_msgs}`)\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖"
     )
-    await scan_msg.edit(msg)
+    await scan_msg.edit(msg, buttons=btns)
+
 
 @client.on(events.NewMessage(pattern=r"^(/status|⚙️ Status)$"))
 @admin_only
 async def status_btn_handler(event):
     admin_chat_state.pop(event.sender_id, None)
+    t0 = time.perf_counter()
     diag_frames = [
-        ("⚙️ `[DIAGNOSTICS] Pinging Telegram MTProto Data Centers...`", 0.3),
-        ("🟢 `[DIAGNOSTICS] All systems nominal! Generating report...`", 0.25)
+        ("⚙️ `[DIAGNOSTICS] Pinging Telegram MTProto Data Centers...`", 0.25),
+        ("🟢 `[DIAGNOSTICS] Measuring SQLite & Event Loop Latency...`", 0.25),
     ]
     diag_msg = await play_animation(event, diag_frames)
-    
-    steps = "\n".join(f"  • Step {s}: `{d['type'].upper()}`" for s, d in sorted(saved_messages.items()))
+    ping_ms = (time.perf_counter() - t0) * 1000
+    db_size_kb = (
+        os.path.getsize(DB_PATH) / 1024 if os.path.exists(DB_PATH) else 0.0
+    )
+
+    steps = "\n".join(
+        f"  • Step {s}: `{d['type'].upper()}`"
+        for s, d in sorted(saved_messages.items())
+    )
     await diag_msg.edit(
         f"⚙️ **SYSTEM HEALTH & DIAGNOSTICS**\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
-        f"🟢 **Engine Status:** `ONLINE (100% Smooth)`\n"
+        f"🟢 **Engine Status:** `{'🛠 MAINTENANCE' if maintenance_mode else 'ONLINE (100% Smooth)'}`\n"
+        f"⚡ **Bot Response Time:** `{ping_ms:.1f} ms`\n"
+        f"💾 **SQLite DB Size:** `{db_size_kb:.1f} KB`\n"
         f"⏱ **Live Uptime:** `{get_uptime()}`\n"
         f"👥 **Tracked Peers:** `{len(tracked_users)}`\n"
         f"🤖 **Auto-Replies:** `{len(auto_replies)}` active\n"
-        f"🎬 **Cyber Animations:** `{'Enabled' if animations_enabled else 'Disabled'}`\n\n"
+        f"🎬 **Cyber Animations:** `{anim_style.upper()} ({'Enabled' if animations_enabled else 'Disabled'})`\n\n"
         f"🔢 **Welcome Sequence Pipeline:**\n{steps if steps else '  • None configured'}"
     )
+
+
+@client.on(events.NewMessage(pattern=r"^🎬 Anim Theme$"))
+@admin_only
+async def anim_theme_menu_btn(event):
+    admin_chat_state.pop(event.sender_id, None)
+    btns = [
+        [
+            Button.inline(
+                f"{'✅ ' if anim_style == 'cyberpunk' else ''}⚡ Cyberpunk",
+                data=b"adm_theme_cyberpunk",
+            ),
+            Button.inline(
+                f"{'✅ ' if anim_style == 'matrix' else ''}🟢 Matrix Code",
+                data=b"adm_theme_matrix",
+            ),
+        ],
+        [
+            Button.inline(
+                f"{'✅ ' if anim_style == 'quantum' else ''}⚛️ Quantum AI",
+                data=b"adm_theme_quantum",
+            ),
+            Button.inline(
+                f"{'✅ ' if anim_style == 'stealth' else ''}👻 Stealth (Instant)",
+                data=b"adm_theme_stealth",
+            ),
+        ],
+        [Button.inline("❌ Close", data=b"adm_cancel")],
+    ]
+    await event.reply(
+        "🎬 **CYBER ANIMATION THEME ENGINE**\n"
+        "➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"🎨 **Current Active Theme:** `{anim_style.upper()}`\n\n"
+        "👇 *Select a visual animation preset for user button actions:*",
+        buttons=btns,
+    )
+
+
+@client.on(events.NewMessage(pattern=r"^🛠 Maintenance$"))
+@admin_only
+async def maintenance_toggle_btn(event):
+    global maintenance_mode
+    admin_chat_state.pop(event.sender_id, None)
+    maintenance_mode = not maintenance_mode
+    set_setting("maintenance_mode", "1" if maintenance_mode else "0")
+    status_str = "🔴 ENABLED (Users Paused)" if maintenance_mode else "🟢 DISABLED (Bot Live)"
+    await event.reply(
+        f"🛠 **MAINTENANCE MODE UPDATED**\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"📡 **Current State:** **{status_str}**"
+    )
+
 
 @client.on(events.NewMessage(pattern=r"^(/togglewelcome|🔇 Toggle Welcome)$"))
 @admin_only
@@ -715,53 +1211,64 @@ async def toggle_welcome_btn(event):
     admin_chat_state.pop(event.sender_id, None)
     welcome_enabled = not welcome_enabled
     set_setting("welcome_enabled", "1" if welcome_enabled else "0")
-    await event.reply(f"🔊 Welcome protocol is now **{'🟢 ON' if welcome_enabled else '🔴 OFF'}**.")
+    await event.reply(
+        f"🔊 Welcome protocol is now **{'🟢 ON' if welcome_enabled else '🔴 OFF'}**."
+    )
+
 
 @client.on(events.NewMessage(pattern=r"^(/cleanup|🧹 Cleanup)$"))
 @admin_only
 async def cleanup_btn(event):
     admin_chat_state.pop(event.sender_id, None)
     clean_frames = [
-        ("🧹 `[VACUUM] Scanning database for dead/blocked accounts...`", 0.35),
-        ("🗑️ `[PURGE] Wiping unreachable peers & optimizing SQLite...`", 0.35)
+        ("🧹 `[VACUUM] Scanning database for dead/blocked accounts...`", 0.32),
+        ("🗑️ `[PURGE] Wiping unreachable peers & optimizing SQLite...`", 0.32),
     ]
     c_msg = await play_animation(event, clean_frames)
-    
+
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.execute("DELETE FROM users WHERE blocked=1")
     removed = len(blocked_users)
     for uid in list(blocked_users):
         tracked_users.pop(uid, None)
     blocked_users.clear()
-    await c_msg.edit(f"✨ **Database Vacuum Complete!**\n🗑 Removed `{removed}` dead/blocked accounts.\n👥 Active Clean Users: `{len(tracked_users)}`")
+    await c_msg.edit(
+        f"✨ **Database Vacuum Complete!**\n"
+        f"🗑 Removed `{removed}` dead/blocked accounts.\n"
+        f"👥 Active Clean Users: `{len(tracked_users)}`"
+    )
+
 
 @client.on(events.NewMessage(pattern=r"^(/backup|📁 Backup)$"))
 @admin_only
 async def backup_btn(event):
     admin_chat_state.pop(event.sender_id, None)
     b_frames = [
-        ("🔐 `[BACKUP] Serializing user hashes & settings...`", 0.3),
-        ("📦 `[EXPORT] Compressing JSON archive & verifying integrity...`", 0.3)
+        ("🔐 `[BACKUP] Serializing user hashes, referrals & settings...`", 0.3),
+        ("📦 `[EXPORT] Compressing JSON archive & verifying integrity...`", 0.3),
     ]
     b_msg = await play_animation(event, b_frames)
-    
+
     db_admins = [a for a in ADMIN_IDS if a not in ROOT_ADMINS]
     data = {
         "tracked": tracked_users,
         "blocked": list(blocked_users),
         "banned": list(banned_users),
         "join_dates": user_join_dates,
+        "user_meta": {str(k): v for k, v in user_meta.items()},
         "messages": {str(k): v for k, v in saved_messages.items()},
         "button_forwards": button_forwards,
         "welcome": welcome_enabled,
         "animations_enabled": animations_enabled,
+        "maintenance_mode": maintenance_mode,
+        "anim_style": anim_style,
         "user_menu_text": user_menu_text,
         "support_username": support_username,
-        "force_channel": force_channel,
+        "force_channel": json.dumps(force_channels),
         "banner_config": banner_config,
         "click_stats": click_stats,
         "auto_replies": auto_replies,
-        "db_admins": db_admins
+        "db_admins": db_admins,
     }
     file = "backup.json"
     with open(file, "w") as f:
@@ -770,8 +1277,13 @@ async def backup_btn(event):
         await b_msg.delete()
     except Exception:
         pass
-    await client.send_file(event.chat_id, file, caption=f"📁 `[VIP System Backup File]`\n👥 Total Users: `{len(tracked_users)}`\n⏱ Uptime: `{get_uptime()}`")
+    await client.send_file(
+        event.chat_id,
+        file,
+        caption=f"📁 `[VIP System Backup File]`\n👥 Total Users: `{len(tracked_users)}`\n⏱ Uptime: `{get_uptime()}`",
+    )
     os.remove(file)
+
 
 # --- 🔍 FIND USER (VIP DOSSIER) ---
 @client.on(events.NewMessage(pattern=r"^🔍 Find User$"))
@@ -782,11 +1294,12 @@ async def find_user_btn(event):
         "🔍 **VIP USER INSPECTOR**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         "👉 **Jis user ki kundali (status/details) check karni hai uski Numeric UID bhejo:**",
-        buttons=CANCEL_BTN
+        buttons=CANCEL_BTN,
     )
     admin_chat_state[admin_id] = {"step": "inspect_user_id"}
 
-# --- 1. INTERACTIVE BROADCAST MENU ---
+
+# --- 1. INTERACTIVE BROADCAST MENU (WITH SCHEDULED TIMER SUPPORT) ---
 @client.on(events.NewMessage(pattern=r"^📢 Broadcast$"))
 @admin_only
 async def broadcast_menu_btn(event):
@@ -795,17 +1308,19 @@ async def broadcast_menu_btn(event):
     btns = [
         [Button.inline("📨 Normal Broadcast (Live Tracker)", data=b"adm_bc_normal")],
         [Button.inline("📌 Broadcast + Auto-Pin", data=b"adm_bc_pin")],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("⏰ Scheduled Broadcast (Timer)", data=b"adm_bc_sched")],
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
-        "📢 **VIP BROADCAST ENGINE v2.0**\n"
+        "📢 **VIP BROADCAST ENGINE v3.0**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"👥 **Total Database:** `{len(tracked_users)}` users\n"
         f"🟢 **Reachable Targets:** `{active_targets}` users\n"
         f"⚡ **Live Update Rate:** `Every 3 Users`\n\n"
         "👇 *Select broadcast mode below:*",
-        buttons=btns
+        buttons=btns,
     )
+
 
 # --- 2. INTERACTIVE SEND DM ---
 @client.on(events.NewMessage(pattern=r"^✉️ Send Message$"))
@@ -816,9 +1331,14 @@ async def send_dm_btn(event):
         "👤 **DIRECT VIP MESSAGING**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         "👉 Niche target user ki **UID** type karke bhejo:",
-        buttons=CANCEL_BTN
+        buttons=CANCEL_BTN,
     )
-    admin_chat_state[admin_id] = {"step": "waiting_for_id", "target_id": None, "prompt_id": prompt.id}
+    admin_chat_state[admin_id] = {
+        "step": "waiting_for_id",
+        "target_id": None,
+        "prompt_id": prompt.id,
+    }
+
 
 # --- 3. INTERACTIVE SET BUTTON MENU ---
 @client.on(events.NewMessage(pattern=r"^🔘 Set Button$"))
@@ -829,14 +1349,14 @@ async def set_button_menu_btn(event):
     pred_cnt = len(button_forwards.get("prediction", []))
     btns = [
         [
-            Button.inline(f"⚡ Set Hack (Replace)", data=b"adm_sbtn_rep_hack"),
-            Button.inline(f"➕ Add Hack ({hack_cnt})", data=b"adm_sbtn_add_hack")
+            Button.inline("⚡ Set Hack (Replace)", data=b"adm_sbtn_rep_hack"),
+            Button.inline(f"➕ Add Hack ({hack_cnt})", data=b"adm_sbtn_add_hack"),
         ],
         [
-            Button.inline(f"📊 Set Trading (Replace)", data=b"adm_sbtn_rep_prediction"),
-            Button.inline(f"➕ Add Trading ({pred_cnt})", data=b"adm_sbtn_add_prediction")
+            Button.inline("📊 Set Trading (Replace)", data=b"adm_sbtn_rep_prediction"),
+            Button.inline(f"➕ Add Trading ({pred_cnt})", data=b"adm_sbtn_add_prediction"),
         ],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
         "🔘 **MODULE FILE MANAGER**\n"
@@ -844,8 +1364,9 @@ async def set_button_menu_btn(event):
         "• **Set (Replace):** Purani files hata kar nayi file lagayega.\n"
         "• **Add (+):** Purani files ke sath ek aur file jodega.\n\n"
         "👇 *Choose which keyboard button to configure:*",
-        buttons=btns
+        buttons=btns,
     )
+
 
 # --- 4. INTERACTIVE CLEAR BUTTON MENU ---
 @client.on(events.NewMessage(pattern=r"^🗑 Clear Button$"))
@@ -855,41 +1376,48 @@ async def clear_button_menu_btn(event):
     btns = [
         [Button.inline("🗑 Clear Number Hack Files", data=b"adm_cbtn_hack")],
         [Button.inline("🗑 Clear Colour Trading Files", data=b"adm_cbtn_prediction")],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
-    await event.reply("🗑 **CLEAR MODULE FILES**\n➖➖➖➖➖➖➖➖➖➖➖➖\n👇 *Click to wipe files from a button:*", buttons=btns)
+    await event.reply(
+        "🗑 **CLEAR MODULE FILES**\n➖➖➖➖➖➖➖➖➖➖➖➖\n👇 *Click to wipe files from a button:*",
+        buttons=btns,
+    )
+
 
 # --- 5. INTERACTIVE WELCOME SEQUENCE MENU ---
 @client.on(events.NewMessage(pattern=r"^🔢 Set Sequence$"))
 @admin_only
 async def sequence_menu_btn(event):
     admin_chat_state.pop(event.sender_id, None)
-    active_steps = ", ".join(f"Step {s}" for s in sorted(saved_messages.keys())) or "None"
+    active_steps = (
+        ", ".join(f"Step {s}" for s in sorted(saved_messages.keys())) or "None"
+    )
     btns = [
         [
             Button.inline("➕ Set Step 1", data=b"adm_seq_set_1"),
             Button.inline("➕ Set Step 2", data=b"adm_seq_set_2"),
-            Button.inline("➕ Set Step 3", data=b"adm_seq_set_3")
+            Button.inline("➕ Set Step 3", data=b"adm_seq_set_3"),
         ],
         [
             Button.inline("➕ Set Step 4", data=b"adm_seq_set_4"),
-            Button.inline("➕ Set Step 5", data=b"adm_seq_set_5")
+            Button.inline("➕ Set Step 5", data=b"adm_seq_set_5"),
         ],
         [
             Button.inline("🗑 Clear Step 1", data=b"adm_seq_del_1"),
             Button.inline("🗑 Clear Step 2", data=b"adm_seq_del_2"),
-            Button.inline("🗑 Clear Step 3", data=b"adm_seq_del_3")
+            Button.inline("🗑 Clear Step 3", data=b"adm_seq_del_3"),
         ],
         [Button.inline("🗑 Clear ALL Steps", data=b"adm_seq_del_all")],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
         "🔢 **WELCOME SEQUENCE BUILDER**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"✅ **Active Steps:** `{active_steps}`\n\n"
         "👇 *Click a step below to set or delete it:*",
-        buttons=btns
+        buttons=btns,
     )
+
 
 # --- 6. INTERACTIVE MENU & BANNER CUSTOMIZER ---
 @client.on(events.NewMessage(pattern=r"^🖼️ Menu & Banner$"))
@@ -897,17 +1425,21 @@ async def sequence_menu_btn(event):
 async def menu_banner_btn(event):
     admin_chat_state.pop(event.sender_id, None)
     b_stat = "🟢 Active" if banner_config.get("msg_id") else "🔴 Not Set"
-    anim_stat = "🟢 ON" if animations_enabled else "🔴 OFF"
+    anim_stat = f"🟢 {anim_style.upper()}" if animations_enabled else "🔴 OFF"
     btns = [
         [Button.inline("✏️ Edit Menu Prompt Text", data=b"adm_mb_text")],
         [
             Button.inline("🖼️ Set Photo/Video Banner", data=b"adm_mb_setbanner"),
-            Button.inline("🗑 Remove Banner", data=b"adm_mb_delbanner")
+            Button.inline("🗑 Remove Banner", data=b"adm_mb_delbanner"),
         ],
         [Button.inline("🎧 Change Support @Username", data=b"adm_mb_support")],
-        [Button.inline(f"🎬 Toggle Animations ({anim_stat})", data=b"adm_mb_toggle_anim")],
+        [
+            Button.inline(
+                f"🎬 Toggle Animations ({anim_stat})", data=b"adm_mb_toggle_anim"
+            )
+        ],
         [Button.inline("👁 Preview User Keyboard Menu", data=b"adm_mb_preview")],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
         "🖼️ **MENU, BANNER & FX STUDIO**\n"
@@ -917,27 +1449,33 @@ async def menu_banner_btn(event):
         f"🎧 **Support ID:** `{support_username}`\n"
         f"🎬 **Cyber Animations:** `{anim_stat}`\n\n"
         "👇 *Select what you want to customize:*",
-        buttons=btns
+        buttons=btns,
     )
 
-# --- 7. INTERACTIVE FORCE JOIN MENU ---
+
+# --- 7. INTERACTIVE MULTI-FORCE JOIN MENU ---
 @client.on(events.NewMessage(pattern=r"^🔒 Force Join$"))
 @admin_only
 async def force_join_menu_btn(event):
     admin_chat_state.pop(event.sender_id, None)
-    f_stat = f"🟢 @{force_channel}" if force_channel else "🔴 Disabled"
+    f_stat = (
+        ", ".join(f"@{c}" for c in force_channels) if force_channels else "🔴 Disabled"
+    )
     btns = [
-        [Button.inline("🔒 Set Force Join Channel", data=b"adm_fj_set")],
-        [Button.inline("🔓 Disable Force Join", data=b"adm_fj_clear")],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [
+            Button.inline("➕ Add/Set Channel", data=b"adm_fj_set"),
+            Button.inline("🔓 Clear All Channels", data=b"adm_fj_clear"),
+        ],
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
-        "🔒 **FORCE SUBSCRIBE MANAGER**\n"
+        "🔒 **MULTI-CHANNEL FORCE SUBSCRIBE MANAGER**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
-        f"📌 **Current Channel:** `{f_stat}`\n\n"
-        "⚠️ *Make sure bot is Admin in that channel!*",
-        buttons=btns
+        f"📌 **Active Channels ({len(force_channels)}):** `{f_stat}`\n\n"
+        "💡 *You can add 1 or multiple channels (comma-separated). Make sure the bot is Admin in each channel!*",
+        buttons=btns,
     )
+
 
 # --- 8. INTERACTIVE AUTO-REPLIES MENU ---
 @client.on(events.NewMessage(pattern=r"^🤖 Auto-Replies$"))
@@ -948,17 +1486,18 @@ async def auto_replies_menu_btn(event):
         [Button.inline("➕ Add Auto-Reply", data=b"adm_ar_add")],
         [
             Button.inline(f"📋 View All ({len(auto_replies)})", data=b"adm_ar_list"),
-            Button.inline("🗑 Delete Auto-Reply", data=b"adm_ar_del")
+            Button.inline("🗑 Delete Auto-Reply", data=b"adm_ar_del"),
         ],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
         "🤖 **SMART AUTO-RESPONDER**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"🔑 **Active Keywords:** `{len(auto_replies)}`\n\n"
         "👇 *Manage automatic support replies below:*",
-        buttons=btns
+        buttons=btns,
     )
+
 
 # --- 9. INTERACTIVE ADMIN & SECURITY MENU ---
 @client.on(events.NewMessage(pattern=r"^👑 Manage Admins$"))
@@ -968,22 +1507,29 @@ async def manage_admins_menu_btn(event):
     btns = [
         [
             Button.inline("➕ Add Admin", data=b"adm_sec_addadmin"),
-            Button.inline("➖ Remove Admin", data=b"adm_sec_deladmin")
+            Button.inline("➖ Remove Admin", data=b"adm_sec_deladmin"),
         ],
-        [Button.inline(f"👑 List All Admins ({len(ADMIN_IDS)})", data=b"adm_sec_listadmins")],
+        [
+            Button.inline(
+                f"👑 List All Admins ({len(ADMIN_IDS)})", data=b"adm_sec_listadmins"
+            )
+        ],
         [
             Button.inline("🚫 Ban User", data=b"adm_sec_ban"),
-            Button.inline(f"✅ Unban User ({len(banned_users)})", data=b"adm_sec_unban")
+            Button.inline(
+                f"✅ Unban User ({len(banned_users)})", data=b"adm_sec_unban"
+            ),
         ],
-        [Button.inline("❌ Close", data=b"adm_cancel")]
+        [Button.inline("❌ Close", data=b"adm_cancel")],
     ]
     await event.reply(
         "👑 **ADMIN & SECURITY CENTER**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         f"👑 **Admins:** `{len(ADMIN_IDS)}` | 🚫 **Banned Users:** `{len(banned_users)}`\n\n"
         "👇 *Select an operation below:*",
-        buttons=btns
+        buttons=btns,
     )
+
 
 # --- 10. INTERACTIVE RESTORE MENU ---
 @client.on(events.NewMessage(pattern=r"^🔄 Restore$"))
@@ -995,25 +1541,98 @@ async def restore_menu_btn(event):
         [Button.inline("📤 Upload Backup (.json) File", data=b"adm_res_upload")],
     ]
     if has_auto:
-        btns.insert(0, [Button.inline("⚡ Instant Restore (auto_backup.json)", data=b"adm_res_auto")])
+        btns.insert(
+            0, [Button.inline("⚡ Instant Restore (auto_backup.json)", data=b"adm_res_auto")]
+        )
     btns.append([Button.inline("❌ Close", data=b"adm_cancel")])
-    
+
     await event.reply(
         "🔄 **DATABASE RESTORE CENTER**\n"
         "➖➖➖➖➖➖➖➖➖➖➖➖\n"
         "👇 *Choose how you want to restore your data:*",
-        buttons=btns
+        buttons=btns,
     )
+
 
 # =====================================================================
 # 🎯 INLINE CALLBACK HANDLERS FOR ADMIN SUB-MENUS
 # =====================================================================
+async def render_user_dossier(event, target_uid: int, is_edit: bool = True):
+    in_db = target_uid in tracked_users
+    is_blk = target_uid in blocked_users
+    is_ban = target_uid in banned_users
+    j_date = user_join_dates.get(target_uid, "Unknown")
+    meta = user_meta.get(
+        target_uid, {"referred_by": 0, "referrals": 0, "last_seen": "Unknown", "vip": 0}
+    )
+    is_vip = bool(meta.get("vip"))
+
+    u_name = "Unknown"
+    u_handle = "None"
+    try:
+        ent = await client.get_entity(target_uid)
+        u_name = (
+            f"{getattr(ent, 'first_name', '') or ''} {getattr(ent, 'last_name', '') or ''}".strip()
+            or "User"
+        )
+        if getattr(ent, "username", None):
+            u_handle = f"@{ent.username}"
+    except Exception:
+        pass
+
+    status_badge = (
+        "🚫 BANNED"
+        if is_ban
+        else (
+            "🔴 BLOCKED BOT"
+            if is_blk
+            else ("🟢 ACTIVE VIP" if in_db else "⚪ NOT IN DB")
+        )
+    )
+    dossier_btns = [
+        [
+            Button.inline(
+                "✉️ Send Direct Message", data=f"adm_quickdm_{target_uid}".encode()
+            )
+        ],
+        [
+            Button.inline(
+                "💎 Revoke VIP" if is_vip else "💎 Grant VIP",
+                data=f"adm_togglevip_{target_uid}".encode(),
+            ),
+            Button.inline(
+                "✅ Unban User" if is_ban else "🚫 Ban User",
+                data=f"adm_secunbanid_{target_uid}".encode()
+                if is_ban
+                else f"adm_quickban_{target_uid}".encode(),
+            ),
+        ],
+    ]
+    text = (
+        f"🕵️‍♂️ **VIP USER DOSSIER**\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"👤 **Name:** `{u_name}`\n"
+        f"🔗 **Username:** `{u_handle}`\n"
+        f"🆔 **UID:** `{target_uid}`\n"
+        f"📡 **Status:** `{status_badge}`\n"
+        f"🎖 **VIP Tier:** `{'👑 DIAMOND VIP' if is_vip else '🔹 Standard'}`\n"
+        f"👥 **Referrals:** `{meta.get('referrals', 0)}` *(Invited by: `{meta.get('referred_by', 0)}'`)*\n"
+        f"📅 **Joined Date:** `{j_date}`\n"
+        f"🕒 **Last Active:** `{meta.get('last_seen', 'Unknown')}`\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖"
+    )
+    if is_edit:
+        await event.edit(text, buttons=dossier_btns)
+    else:
+        await event.respond(text, buttons=dossier_btns)
+
+
 @client.on(events.CallbackQuery(pattern=b"^adm_"))
 async def admin_callback_router(event):
-    global banner_config, force_channel, animations_enabled, broadcast_cancel_flag
+    global banner_config, force_channels, animations_enabled, anim_style, broadcast_cancel_flag
     if event.sender_id not in ADMIN_IDS:
         return await event.answer("❌ Access Denied!", alert=True)
-        
+
     admin_id = event.sender_id
     data = event.data.decode("utf-8")
 
@@ -1031,12 +1650,94 @@ async def admin_callback_router(event):
             pass
         return
 
+    if data == "adm_refresh_stats":
+        await event.answer("⚡ Refreshing live telemetry...")
+        hack_msgs = len(button_forwards.get("hack", []))
+        pred_msgs = len(button_forwards.get("prediction", []))
+        total_u = len(tracked_users)
+        active_count = total_u - len(blocked_users)
+        health_pct = int((active_count / max(1, total_u)) * 100) if total_u else 100
+        j_today, j_yest, vip_cnt = get_growth_metrics()
+        banner_status = "🟢 Set" if banner_config.get("msg_id") else "🔴 None"
+        force_status = (
+            f"🟢 {len(force_channels)} Ch" if force_channels else "🔴 OFF"
+        )
+        total_clicks = sum(click_stats.values())
+        btns = [[Button.inline("🔄 Refresh Live Telemetry", data=b"adm_refresh_stats")]]
+        msg = (
+            "📊 **VIP BOT ANALYTICS & METRICS**\n"
+            "➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            f"⏱ **Server Uptime:** `{get_uptime()}`\n"
+            f"👥 **Total Users:** `{total_u}` *(🟢 {active_count} Active)*\n"
+            f"🔋 **Reachability:** `[{make_bar(health_pct)}] {health_pct}%`\n"
+            f"📈 **Growth:** `+{j_today} Today` | `+{j_yest} Yesterday`\n"
+            f"💎 **VIP Referrers:** `{vip_cnt}` | 👑 **Admins:** `{len(ADMIN_IDS)}`\n"
+            f"🚫 **Blocked:** `{len(blocked_users)}` | **Banned:** `{len(banned_users)}`\n\n"
+            f"🎯 **MODULE CLICK ANALYTICS ({total_clicks} Total):**\n"
+            f" ├ ⚡ Number Hack: `{click_stats.get('hack', 0)}` clicks\n"
+            f" ├ 📊 Colour Trading: `{click_stats.get('prediction', 0)}` clicks\n"
+            f" ├ 🎧 Contact Support: `{click_stats.get('support', 0)}` clicks\n"
+            f" └ 💎 VIP Dossier: `{click_stats.get('vip_profile', 0)}` views\n\n"
+            f"⚙️ **SYSTEM CONFIGURATION:**\n"
+            f" ├ 🔊 Welcome: `{'🟢 ON' if welcome_enabled else '🔴 OFF'}` ({len(saved_messages)} steps)\n"
+            f" ├ 🎬 Anim Theme: `{anim_style.upper()}` (`{'🟢 ON' if animations_enabled else '🔴 OFF'}`)\n"
+            f" ├ 🛠 Maintenance: `{'🔴 ACTIVE' if maintenance_mode else '🟢 OFF'}`\n"
+            f" ├ 🖼️ Menu Banner: `{banner_status}`\n"
+            f" ├ 🔒 Force Join: `{force_status}`\n"
+            f" ├ 🎧 Support ID: `{support_username}`\n"
+            f" └ 📁 Files: Hack (`{hack_msgs}`) | Prediction (`{pred_msgs}`)\n"
+            "➖➖➖➖➖➖➖➖➖➖➖➖"
+        )
+        try:
+            await event.edit(msg, buttons=btns)
+        except Exception:
+            pass
+        return
+
+    if data.startswith("adm_theme_"):
+        chosen = data.replace("adm_theme_", "")
+        if chosen in ("cyberpunk", "matrix", "quantum", "stealth"):
+            anim_style = chosen
+            animations_enabled = chosen != "stealth"
+            set_setting("anim_style", anim_style)
+            set_setting("animations_enabled", "1" if animations_enabled else "0")
+            await event.answer(f"🎬 Theme set to {anim_style.upper()}!", alert=True)
+            await event.edit(
+                f"🎬 **Animation Theme Activated:** `{anim_style.upper()}`\n"
+                f"✨ All user button actions will now play the `{anim_style}` visual sequence!"
+            )
+        return
+
     if data == "adm_mb_toggle_anim":
         animations_enabled = not animations_enabled
         set_setting("animations_enabled", "1" if animations_enabled else "0")
         anim_stat = "🟢 ON" if animations_enabled else "🔴 OFF"
         await event.answer(f"🎬 Animations: {anim_stat}", alert=True)
         await event.edit(f"🎬 **Cyberpunk Animations are now `{anim_stat}`!**")
+        return
+
+    if data.startswith("adm_dossier_"):
+        target_uid = int(data.split("_")[-1])
+        await event.answer("Opening Dossier...")
+        await render_user_dossier(event, target_uid, is_edit=False)
+        return
+
+    if data.startswith("adm_togglevip_"):
+        target_uid = int(data.split("_")[-1])
+        meta = user_meta.setdefault(
+            target_uid,
+            {"referred_by": 0, "referrals": 0, "last_seen": "Unknown", "vip": 0},
+        )
+        meta["vip"] = 0 if meta.get("vip") else 1
+        save_user(
+            target_uid,
+            tracked_users.get(target_uid, 0),
+            blocked=(target_uid in blocked_users),
+        )
+        await event.answer(
+            f"💎 VIP {'Granted' if meta['vip'] else 'Revoked'}!", alert=True
+        )
+        await render_user_dossier(event, target_uid, is_edit=True)
         return
 
     if data.startswith("adm_quickdm_"):
@@ -1046,9 +1747,13 @@ async def admin_callback_router(event):
             f"✅ **Target UID Locked:** `{target_uid}`\n"
             f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
             f"✍️ **Ab apna Message, Photo ya Video bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
-        admin_chat_state[admin_id] = {"step": "waiting_for_msg", "target_id": target_uid, "prompt_id": prompt.id}
+        admin_chat_state[admin_id] = {
+            "step": "waiting_for_msg",
+            "target_id": target_uid,
+            "prompt_id": prompt.id,
+        }
         return
 
     if data.startswith("adm_quickban_"):
@@ -1057,7 +1762,9 @@ async def admin_callback_router(event):
             return await event.answer("❌ Cannot ban an Admin!", alert=True)
         banned_users.add(target_uid)
         with sqlite3.connect(str(DB_PATH)) as conn:
-            conn.execute("INSERT OR IGNORE INTO banned (user_id) VALUES (?)", (target_uid,))
+            conn.execute(
+                "INSERT OR IGNORE INTO banned (user_id) VALUES (?)", (target_uid,)
+            )
         await event.answer(f"🚫 User {target_uid} Banned!", alert=True)
         await event.respond(f"🚫 **User `{target_uid}` has been BANNED.**")
         return
@@ -1082,16 +1789,31 @@ async def admin_callback_router(event):
         return
 
     if data in ("adm_bc_normal", "adm_bc_pin"):
-        should_pin = (data == "adm_bc_pin")
+        should_pin = data == "adm_bc_pin"
         mode_str = "📌 Broadcast + Auto-Pin" if should_pin else "📨 Normal Broadcast"
         await event.answer()
         await event.edit(
             f"📡 **{mode_str} Ready!**\n"
             f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
             f"👉 **Ab wo Message, Photo, Video ya Post bhejo (ya forward karo) jo sabhi `{len(tracked_users)}` users ko bhejna hai:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
-        admin_chat_state[admin_id] = {"step": "broadcast_send", "pin": should_pin}
+        admin_chat_state[admin_id] = {
+            "step": "broadcast_send",
+            "pin": should_pin,
+            "delay_min": 0,
+        }
+        return
+
+    if data == "adm_bc_sched":
+        await event.answer()
+        await event.edit(
+            "⏰ **SCHEDULED BROADCAST (Step 1/2)**\n"
+            "➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            "👉 **Kitne minutes baad broadcast fire karna hai? Numeric minutes bhejo (e.g., `10`, `30`, `60`):**",
+            buttons=CANCEL_BTN,
+        )
+        admin_chat_state[admin_id] = {"step": "broadcast_sched_time"}
         return
 
     if data.startswith("adm_sbtn_"):
@@ -1104,9 +1826,13 @@ async def admin_callback_router(event):
             f"🔘 **Configure `{btn_key.upper()}` ({action_label})**\n"
             f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
             f"👉 **Ab wo Message, File, Photo ya Video bhejo jo `{btn_key}` button dabane par user ko milegi:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
-        admin_chat_state[admin_id] = {"step": "set_btn_file", "mode": mode, "btn_key": btn_key}
+        admin_chat_state[admin_id] = {
+            "step": "set_btn_file",
+            "mode": mode,
+            "btn_key": btn_key,
+        }
         return
 
     if data.startswith("adm_cbtn_"):
@@ -1114,7 +1840,9 @@ async def admin_callback_router(event):
         button_forwards.pop(btn_key, None)
         delete_button_config(btn_key)
         await event.answer(f"🗑 {btn_key.upper()} files cleared!", alert=True)
-        await event.edit(f"🗑 **All files for `{btn_key.upper()}` button have been wiped!**")
+        await event.edit(
+            f"🗑 **All files for `{btn_key.upper()}` button have been wiped!**"
+        )
         return
 
     if data.startswith("adm_seq_set_"):
@@ -1124,7 +1852,7 @@ async def admin_callback_router(event):
             f"🔢 **Configure Welcome Step {step_num}**\n"
             f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
             f"👉 **Ab Step {step_num} ke liye Text, Photo, Video ya Forwarded Message bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "set_seq_step", "seq_step": step_num}
         return
@@ -1154,7 +1882,7 @@ async def admin_callback_router(event):
             f"📌 **Current Text:**\n{user_menu_text}\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             "👉 **Ab naya Menu Text bhejo (default rakhne ke liye `👇` bhejo):**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "set_menu_text"}
         return
@@ -1165,7 +1893,7 @@ async def admin_callback_router(event):
             "🖼️ **SET VIP MENU BANNER**\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             "👉 **Ab koi bhi Photo, Video ya GIF bhejo jo `/start` keyboard menu ke sath jayegi:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "set_banner_media"}
         return
@@ -1184,7 +1912,7 @@ async def admin_callback_router(event):
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             f"📌 **Current ID:** `{support_username}`\n\n"
             "👉 **Ab naya `@username` type karke bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "set_support_id"}
         return
@@ -1192,26 +1920,31 @@ async def admin_callback_router(event):
     if data == "adm_mb_preview":
         await event.answer("Sending user keyboard preview...")
         await send_user_menu(admin_id)
-        await event.respond("💡 *Tip: Apna Admin Keyboard wapas laane ke liye `panel` ya `/start` bhejein.*")
+        await event.respond(
+            "💡 *Tip: Apna Admin Keyboard wapas laane ke liye `panel` ya `/start` bhejein.*"
+        )
         return
 
     if data == "adm_fj_set":
         await event.answer()
         await event.edit(
-            "🔒 **SET FORCE JOIN CHANNEL**\n"
+            "🔒 **SET FORCE JOIN CHANNEL(S)**\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
-            "👉 **Apne channel ka `@username` ya link (`https://t.me/...`) bhejo:**\n\n"
-            "⚠️ *Yaad se pehle is bot ko us channel mein Admin bana dena!*",
-            buttons=CANCEL_BTN
+            "👉 **Apne channel ka `@username` ya link (`https://t.me/...`) bhejo:**\n"
+            "💡 *Multiple channels ke liye comma lagayein (e.g. `@vip_ch1, @vip_ch2`)*\n\n"
+            "⚠️ *Yaad se pehle is bot ko un channels mein Admin bana dena!*",
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "set_force_ch"}
         return
 
     if data == "adm_fj_clear":
-        force_channel = ""
+        force_channels = []
         set_setting("force_channel", "")
         await event.answer("🔓 Force Join Disabled!", alert=True)
-        await event.edit("🔓 **Force Join Disabled.** Sabhi users ab seedha files access kar sakte hain.")
+        await event.edit(
+            "🔓 **Force Join Disabled.** Sabhi users ab seedha files access kar sakte hain."
+        )
         return
 
     if data == "adm_ar_add":
@@ -1220,7 +1953,7 @@ async def admin_callback_router(event):
             "🤖 **ADD AUTO-REPLY (Step 1/2)**\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             "👉 **Sabse pehle Keyword bhejo** *(jaise `price`, `help`, `hack`)*:",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "ar_step_keyword"}
         return
@@ -1239,12 +1972,18 @@ async def admin_callback_router(event):
     if data == "adm_ar_del":
         await event.answer()
         if not auto_replies:
-            return await event.edit("📭 **Delete karne ke liye koi Auto-Reply nahi hai.**")
+            return await event.edit(
+                "📭 **Delete karne ke liye koi Auto-Reply nahi hai.**"
+            )
         kw_btns = []
         for kw in list(auto_replies.keys())[:15]:
-            kw_btns.append([Button.inline(f"🗑 Delete '{kw}'", data=f"adm_ardelkw_{kw}".encode())])
+            kw_btns.append(
+                [Button.inline(f"🗑 Delete '{kw}'", data=f"adm_ardelkw_{kw}".encode())]
+            )
         kw_btns.append([Button.inline("❌ Cancel", data=b"adm_cancel")])
-        await event.edit("🗑 **Tap any keyword below to delete it immediately:**", buttons=kw_btns)
+        await event.edit(
+            "🗑 **Tap any keyword below to delete it immediately:**", buttons=kw_btns
+        )
         return
 
     if data.startswith("adm_ardelkw_"):
@@ -1262,7 +2001,7 @@ async def admin_callback_router(event):
             "👑 **ADD NEW ADMIN**\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             "👉 **Naye Admin ki Numeric Telegram UID bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "sec_add_admin"}
         return
@@ -1271,10 +2010,18 @@ async def admin_callback_router(event):
         await event.answer()
         sub_admins = [a for a in ADMIN_IDS if a not in ROOT_ADMINS]
         if not sub_admins:
-            return await event.edit("⚠️ **Koi Sub-Admin nahi hai (Root Admins ko remove nahi kiya ja sakta).**")
-        adm_btns = [[Button.inline(f"🗑 Remove Admin {aid}", data=f"adm_secdelid_{aid}".encode())] for aid in sub_admins]
+            return await event.edit(
+                "⚠️ **Koi Sub-Admin nahi hai (Root Admins ko remove nahi kiya ja sakta).**"
+            )
+        adm_btns = [
+            [Button.inline(f"🗑 Remove Admin {aid}", data=f"adm_secdelid_{aid}".encode())]
+            for aid in sub_admins
+        ]
         adm_btns.append([Button.inline("❌ Cancel", data=b"adm_cancel")])
-        await event.edit("👑 **Tap on an Admin ID below to remove their privileges:**", buttons=adm_btns)
+        await event.edit(
+            "👑 **Tap on an Admin ID below to remove their privileges:**",
+            buttons=adm_btns,
+        )
         return
 
     if data.startswith("adm_secdelid_"):
@@ -1304,7 +2051,7 @@ async def admin_callback_router(event):
             "🚫 **BAN A SPAMMER**\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             "👉 **Jis user ko Ban karna hai uski UID bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "sec_ban_user"}
         return
@@ -1313,9 +2060,15 @@ async def admin_callback_router(event):
         await event.answer()
         if not banned_users:
             return await event.edit("✅ **Abhi koi bhi user Banned nahi hai.**")
-        ub_btns = [[Button.inline(f"✅ Unban {uid}", data=f"adm_secunbanid_{uid}".encode())] for uid in list(banned_users)[:15]]
+        ub_btns = [
+            [Button.inline(f"✅ Unban {uid}", data=f"adm_secunbanid_{uid}".encode())]
+            for uid in list(banned_users)[:15]
+        ]
         ub_btns.append([Button.inline("❌ Cancel", data=b"adm_cancel")])
-        await event.edit("🔓 **Tap a User ID below to Unban immediately (or send UID):**", buttons=ub_btns)
+        await event.edit(
+            "🔓 **Tap a User ID below to Unban immediately (or send UID):**",
+            buttons=ub_btns,
+        )
         admin_chat_state[admin_id] = {"step": "sec_unban_user"}
         return
 
@@ -1335,7 +2088,9 @@ async def admin_callback_router(event):
             with open("auto_backup.json", "r") as f:
                 bdata = json.load(f)
             restore_from_dict(bdata)
-            await event.edit(f"✅ **Auto-Backup Restored Successfully!**\n👥 Loaded Users: `{len(tracked_users)}`")
+            await event.edit(
+                f"✅ **Auto-Backup Restored Successfully!**\n👥 Loaded Users: `{len(tracked_users)}`"
+            )
         except Exception as e:
             await event.edit(f"❌ **Auto-Restore Failed:** {e}")
         return
@@ -1346,29 +2101,50 @@ async def admin_callback_router(event):
             "📤 **UPLOAD BACKUP FILE**\n"
             "➖➖➖➖➖➖➖➖➖➖➖➖\n"
             "👉 **Ab apni `.json` backup file yahan chat mein bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
         admin_chat_state[admin_id] = {"step": "restore_upload_json"}
         return
 
+
 # =====================================================================
-# 🚀 BROADCAST ENGINE 2.0 (EVERY 3 USERS UPDATE + ETA + STOP BUTTON)
+# 🚀 BROADCAST ENGINE 3.0 (EVERY 3 USERS UPDATE + ETA + STOP + SCHEDULER)
 # =====================================================================
-async def execute_broadcast(event, should_pin: bool, manual_text: str = None, reply_msg_obj = None):
+async def execute_broadcast(
+    event,
+    should_pin: bool,
+    manual_text: str = None,
+    reply_msg_obj=None,
+    delay_minutes: int = 0,
+):
     global broadcast_cancel_flag
     if not tracked_users:
         return await event.reply("❌ Koi active user nahi hai.")
-        
+
+    if delay_minutes > 0:
+        sched_msg = await event.reply(
+            f"⏰ **BROADCAST SCHEDULED!**\n"
+            f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            f"⏳ **Countdown:** `{delay_minutes} minutes`\n"
+            f"👥 **Target Audience:** `{len(tracked_users)}` users\n"
+            f"💡 *Bot will automatically fire this broadcast when timer hits zero.*"
+        )
+        await asyncio.sleep(delay_minutes * 60)
+        try:
+            await sched_msg.delete()
+        except Exception:
+            pass
+
     broadcast_cancel_flag = False
     total_targets = len(tracked_users)
     stop_btn = [[Button.inline("🛑 Stop Broadcast", data=b"adm_bc_stop")]]
-    
+
     launch_frames = [
-        ("⚡ `[ENGINE] Locking target database & warming up threads...`", 0.3),
-        (f"🚀 `[LAUNCH] Firing broadcast to {total_targets} peers...`", 0.3)
+        ("⚡ `[ENGINE] Locking target database & warming up threads...`", 0.28),
+        (f"🚀 `[LAUNCH] Firing broadcast to {total_targets} peers...`", 0.28),
     ]
     status_msg = await play_animation(event, launch_frames)
-    
+
     success = fail = skip = 0
     processed = 0
     bc_start_time = time.time()
@@ -1377,7 +2153,7 @@ async def execute_broadcast(event, should_pin: bool, manual_text: str = None, re
     for uid, old_hash in list(tracked_users.items()):
         if broadcast_cancel_flag:
             break
-            
+
         processed += 1
         if uid in blocked_users:
             skip += 1
@@ -1385,21 +2161,25 @@ async def execute_broadcast(event, should_pin: bool, manual_text: str = None, re
             try:
                 peer = await client.get_input_entity(uid)
                 if reply_msg_obj:
-                    sent = await client.forward_messages(peer, reply_msg_obj.id, reply_msg_obj.chat_id)
+                    sent = await client.forward_messages(
+                        peer, reply_msg_obj.id, reply_msg_obj.chat_id
+                    )
                 elif manual_text is not None:
                     sent = await client.send_message(peer, manual_text)
                 elif event.fwd_from:
                     sent = await client.forward_messages(peer, event.id, event.chat_id)
                 else:
-                    sent = await client.send_message(peer, event.text or "", file=event.media)
-                    
+                    sent = await client.send_message(
+                        peer, event.text or "", file=event.media
+                    )
+
                 if should_pin and sent:
                     try:
                         msg_to_pin = sent[0].id if isinstance(sent, list) else sent.id
                         await client.pin_message(peer, msg_to_pin, notify=True)
                     except Exception:
                         pass
-                        
+
                 success += 1
                 await asyncio.sleep(0.25)
             except FloodWaitError as e:
@@ -1414,16 +2194,15 @@ async def execute_broadcast(event, should_pin: bool, manual_text: str = None, re
         # 🔥 UPDATE EVERY 3 USERS (OR FINAL USER)
         if processed % 3 == 0 or processed == total_targets:
             pct = int((processed / total_targets) * 100)
-            filled = pct // 10
-            bar = "█" * filled + "░" * (10 - filled)
+            bar = make_bar(pct)
             spinner = SPINNER_FRAMES[spin_idx % len(SPINNER_FRAMES)]
             spin_idx += 1
-            
+
             elapsed = max(time.time() - bc_start_time, 0.1)
             speed = processed / elapsed
             remaining_users = total_targets - processed
             eta_str = format_eta(remaining_users / speed) if speed > 0 else "..."
-            
+
             try:
                 await status_msg.edit(
                     f"{spinner} **LIVE VIP BROADCASTING...** `[{bar}] {pct}%`\n"
@@ -1431,13 +2210,17 @@ async def execute_broadcast(event, should_pin: bool, manual_text: str = None, re
                     f"🔄 **Processed:** `{processed} / {total_targets}`\n"
                     f"✅ **Delivered:** `{success}` | ❌ **Failed:** `{fail}` | ⏭ **Skipped:** `{skip}`\n"
                     f"⚡ **Speed:** `{speed:.1f} users/s` | ⏳ **ETA:** `{eta_str}`",
-                    buttons=stop_btn
+                    buttons=stop_btn,
                 )
             except Exception:
                 pass
 
     total_time = format_eta(time.time() - bc_start_time)
-    header_title = "🛑 **BROADCAST ABORTED BY ADMIN**" if broadcast_cancel_flag else "✅ **VIP BROADCAST COMPLETED!**"
+    header_title = (
+        "🛑 **BROADCAST ABORTED BY ADMIN**"
+        if broadcast_cancel_flag
+        else "✅ **VIP BROADCAST COMPLETED!**"
+    )
     await status_msg.edit(
         f"{header_title}\n"
         f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
@@ -1447,15 +2230,22 @@ async def execute_broadcast(event, should_pin: bool, manual_text: str = None, re
         f"⏭ **Skipped:** `{skip}`\n"
         f"⏱ **Total Time:** `{total_time}`\n"
         f"📌 **Auto-Pinned:** `{'Yes' if should_pin else 'No'}`",
-        buttons=None
+        buttons=None,
     )
+
 
 # =====================================================================
 # 🧠 MASTER INTERACTIVE STATE PROCESSOR (HANDLES ALL ADMIN INPUTS)
 # =====================================================================
-@client.on(events.NewMessage(func=lambda e: e.is_private and e.sender_id in ADMIN_IDS and e.sender_id in admin_chat_state))
+@client.on(
+    events.NewMessage(
+        func=lambda e: e.is_private
+        and e.sender_id in ADMIN_IDS
+        and e.sender_id in admin_chat_state
+    )
+)
 async def handle_admin_chat_state(event):
-    global user_menu_text, banner_config, support_username, force_channel
+    global user_menu_text, banner_config, support_username, force_channels
     admin_id = event.sender_id
     raw_txt = (event.raw_text or "").strip()
 
@@ -1467,49 +2257,21 @@ async def handle_admin_chat_state(event):
 
     # 0. Inspect User ID
     if step == "inspect_user_id":
-        if not raw_txt.lstrip('-').isdigit():
-            return await event.reply("❌ **Invalid UID!** Sirf numeric ID bhejo:", buttons=CANCEL_BTN)
+        if not raw_txt.lstrip("-").isdigit():
+            return await event.reply(
+                "❌ **Invalid UID!** Sirf numeric ID bhejo:", buttons=CANCEL_BTN
+            )
         target_uid = int(raw_txt)
         admin_chat_state.pop(admin_id, None)
-        
-        scan_msg = await play_animation(event, [("🔍 `[DOSSIER] Fetching user profile & database records...`", 0.35)])
-        in_db = target_uid in tracked_users
-        is_blk = target_uid in blocked_users
-        is_ban = target_uid in banned_users
-        j_date = user_join_dates.get(target_uid, "Unknown")
-        
-        u_name = "Unknown"
-        u_handle = "None"
-        try:
-            ent = await client.get_entity(target_uid)
-            u_name = f"{getattr(ent, 'first_name', '') or ''} {getattr(ent, 'last_name', '') or ''}".strip() or "User"
-            if getattr(ent, 'username', None):
-                u_handle = f"@{ent.username}"
-        except Exception:
-            pass
-            
-        status_badge = "🚫 BANNED" if is_ban else ("🔴 BLOCKED BOT" if is_blk else ("🟢 ACTIVE VIP" if in_db else "⚪ NOT IN DB"))
-        dossier_btns = [
-            [Button.inline("✉️ Send Direct Message", data=f"adm_quickdm_{target_uid}".encode())],
-            [
-                Button.inline("✅ Unban User" if is_ban else "🚫 Ban User", data=f"adm_secunbanid_{target_uid}".encode() if is_ban else f"adm_quickban_{target_uid}".encode())
-            ]
-        ]
-        await scan_msg.edit(
-            f"🕵️‍♂️ **VIP USER DOSSIER**\n"
-            f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
-            f"👤 **Name:** `{u_name}`\n"
-            f"🔗 **Username:** `{u_handle}`\n"
-            f"🆔 **UID:** `{target_uid}`\n"
-            f"📡 **Status:** `{status_badge}`\n"
-            f"📅 **Joined Date:** `{j_date}`\n"
-            f"➖➖➖➖➖➖➖➖➖➖➖➖",
-            buttons=dossier_btns
+        scan_msg = await play_animation(
+            event,
+            [("🔍 `[DOSSIER] Fetching user profile & database records...`", 0.3)],
         )
+        await render_user_dossier(scan_msg, target_uid, is_edit=True)
 
     # 1. Direct Message: Waiting for UID
     elif step == "waiting_for_id":
-        if raw_txt.lstrip('-').isdigit():
+        if raw_txt.lstrip("-").isdigit():
             target_id = int(raw_txt)
             state["target_id"] = target_id
             state["step"] = "waiting_for_msg"
@@ -1517,10 +2279,12 @@ async def handle_admin_chat_state(event):
                 f"✅ **Target UID Locked:** `{target_id}`\n"
                 f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
                 f"✍️ **Ab apna Message, Photo ya Video bhejo:**",
-                buttons=CANCEL_BTN
+                buttons=CANCEL_BTN,
             )
         else:
-            await event.reply("❌ **Invalid UID!** Sirf numeric ID bhejo:", buttons=CANCEL_BTN)
+            await event.reply(
+                "❌ **Invalid UID!** Sirf numeric ID bhejo:", buttons=CANCEL_BTN
+            )
 
     # 2. Direct Message: Waiting for Message Content
     elif step == "waiting_for_msg":
@@ -1534,19 +2298,44 @@ async def handle_admin_chat_state(event):
             elif event.media:
                 await client.send_message(peer, file=event.media)
             user_chat_state[target_id] = True
-            await event.respond(f"✅ **VIP Message successfully delivered to `{target_id}`!**")
+            await event.respond(
+                f"✅ **VIP Message successfully delivered to `{target_id}`!**"
+            )
         except UserIsBlockedError:
             blocked_users.add(target_id)
             save_user(target_id, tracked_users.get(target_id, 0), blocked=True)
             await event.respond("❌ **Delivery Failed:** User blocked the bot.")
         except Exception as e:
-            await event.respond(f"❌ **Delivery Failed:** Invalid ID or user hasn't started the bot (`{e}`).")
+            await event.respond(
+                f"❌ **Delivery Failed:** Invalid ID or user hasn't started the bot (`{e}`)."
+            )
 
-    # 3. Broadcast Execution
+    # 3A. Scheduled Broadcast Step 1 (Minutes)
+    elif step == "broadcast_sched_time":
+        if not raw_txt.isdigit() or int(raw_txt) <= 0:
+            return await event.reply(
+                "❌ **Invalid Time!** Kripya positive minutes bhejo (e.g. `15`):",
+                buttons=CANCEL_BTN,
+            )
+        mins = int(raw_txt)
+        state["delay_min"] = mins
+        state["pin"] = False
+        state["step"] = "broadcast_send"
+        await event.reply(
+            f"⏰ **Timer Locked:** `{mins} Minutes`\n"
+            f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            f"👉 **Ab wo Message, Photo ya Video bhejo jo `{mins}m` baad broadcast karna hai:**",
+            buttons=CANCEL_BTN,
+        )
+
+    # 3B. Broadcast Execution
     elif step == "broadcast_send":
         should_pin = state.get("pin", False)
+        delay_min = state.get("delay_min", 0)
         admin_chat_state.pop(admin_id, None)
-        await execute_broadcast(event, should_pin)
+        asyncio.create_task(
+            execute_broadcast(event, should_pin, delay_minutes=delay_min)
+        )
 
     # 4. Set / Add Module Button File
     elif step == "set_btn_file":
@@ -1559,13 +2348,22 @@ async def handle_admin_chat_state(event):
         if btn_key not in button_forwards:
             button_forwards[btn_key] = []
         add_button_config(btn_key, event.id, event.chat_id)
-        button_forwards[btn_key].append({"msg_id": event.id, "from_chat": event.chat_id})
+        button_forwards[btn_key].append(
+            {"msg_id": event.id, "from_chat": event.chat_id}
+        )
         total_f = len(button_forwards[btn_key])
-        more_btn = [[Button.inline(f"➕ Add Another File to {btn_key.upper()}", data=f"adm_sbtn_add_{btn_key}".encode())]]
+        more_btn = [
+            [
+                Button.inline(
+                    f"➕ Add Another File to {btn_key.upper()}",
+                    data=f"adm_sbtn_add_{btn_key}".encode(),
+                )
+            ]
+        ]
         await event.reply(
             f"✅ **File Saved to `{btn_key.upper()}` Button!**\n"
             f"📁 **Total Active Files:** `{total_f}`",
-            buttons=more_btn
+            buttons=more_btn,
         )
 
     # 5. Set Welcome Sequence Step
@@ -1583,16 +2381,23 @@ async def handle_admin_chat_state(event):
     # 6. Edit User Menu Text
     elif step == "set_menu_text":
         if not raw_txt:
-            return await event.reply("❌ Text khali nahi ho sakta! Phir se bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Text khali nahi ho sakta! Phir se bhejo:", buttons=CANCEL_BTN
+            )
         admin_chat_state.pop(admin_id, None)
         user_menu_text = raw_txt
         set_setting("user_menu_text", user_menu_text)
-        await event.reply(f"✅ **User Menu Prompt Text Updated!**\n\nPreview:\n{user_menu_text}")
+        await event.reply(
+            f"✅ **User Menu Prompt Text Updated!**\n\nPreview:\n{user_menu_text}"
+        )
 
     # 7. Set Menu Banner Media
     elif step == "set_banner_media":
         if not event.media:
-            return await event.reply("❌ **Error:** Kripya koi Photo, Video ya GIF bhejo!", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ **Error:** Kripya koi Photo, Video ya GIF bhejo!",
+                buttons=CANCEL_BTN,
+            )
         admin_chat_state.pop(admin_id, None)
         banner_config = {"msg_id": event.id, "chat_id": event.chat_id}
         set_setting("banner_config", json.dumps(banner_config))
@@ -1607,22 +2412,32 @@ async def handle_admin_chat_state(event):
         set_setting("support_username", support_username)
         await event.reply(f"✅ **Support Contact Updated:** `{support_username}`")
 
-    # 9. Set Force Join Channel
+    # 9. Set Force Join Channel(s)
     elif step == "set_force_ch":
         if not raw_txt:
-            return await event.reply("❌ Channel `@username` bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Channel `@username` bhejo:", buttons=CANCEL_BTN
+            )
         admin_chat_state.pop(admin_id, None)
-        ch = raw_txt
-        if "t.me/" in ch:
-            ch = ch.split("t.me/")[-1].split("/")[0]
-        force_channel = ch.lstrip("@")
-        set_setting("force_channel", force_channel)
-        await event.reply(f"🔒 **Force Join Enabled for:** `@{force_channel}`")
+        parsed_channels = []
+        for part in raw_txt.split(","):
+            ch = part.strip()
+            if "t.me/" in ch:
+                ch = ch.split("t.me/")[-1].split("/")[0]
+            ch = ch.lstrip("@").strip()
+            if ch and ch not in parsed_channels:
+                parsed_channels.append(ch)
+        force_channels = parsed_channels
+        set_setting("force_channel", json.dumps(force_channels))
+        ch_display = ", ".join(f"@{c}" for c in force_channels)
+        await event.reply(f"🔒 **Force Join Enabled for:** `{ch_display}`")
 
     # 10. Auto-Reply Step 1 (Keyword)
     elif step == "ar_step_keyword":
         if not raw_txt:
-            return await event.reply("❌ Keyword type karke bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Keyword type karke bhejo:", buttons=CANCEL_BTN
+            )
         kw = raw_txt.lower()
         state["keyword"] = kw
         state["step"] = "ar_step_response"
@@ -1630,49 +2445,64 @@ async def handle_admin_chat_state(event):
             f"🔑 **Keyword Locked:** `{kw}`\n"
             f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
             f"👉 **Ab Step 2/2: Is keyword ka Auto-Reply message bhejo:**",
-            buttons=CANCEL_BTN
+            buttons=CANCEL_BTN,
         )
 
     # 11. Auto-Reply Step 2 (Response)
     elif step == "ar_step_response":
         if not raw_txt:
-            return await event.reply("❌ Reply text khali nahi ho sakta!", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Reply text khali nahi ho sakta!", buttons=CANCEL_BTN
+            )
         kw = state["keyword"]
         admin_chat_state.pop(admin_id, None)
         auto_replies[kw] = raw_txt
         with sqlite3.connect(str(DB_PATH)) as conn:
-            conn.execute("INSERT OR REPLACE INTO auto_replies (keyword, response) VALUES (?, ?)", (kw, raw_txt))
+            conn.execute(
+                "INSERT OR REPLACE INTO auto_replies (keyword, response) VALUES (?, ?)",
+                (kw, raw_txt),
+            )
         await event.reply(f"✅ **Auto-Reply Saved!**\n🔑 `{kw}` ➡ {raw_txt}")
 
     # 12. Security: Add Admin
     elif step == "sec_add_admin":
         if not raw_txt.isdigit():
-            return await event.reply("❌ Sirf numeric UID bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Sirf numeric UID bhejo:", buttons=CANCEL_BTN
+            )
         new_aid = int(raw_txt)
         admin_chat_state.pop(admin_id, None)
         if new_aid not in ADMIN_IDS:
             ADMIN_IDS.append(new_aid)
             with sqlite3.connect(str(DB_PATH)) as conn:
-                conn.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_aid,))
+                conn.execute(
+                    "INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_aid,)
+                )
         await event.reply(f"✅ **New Admin Added:** `{new_aid}`")
 
     # 13. Security: Ban User
     elif step == "sec_ban_user":
         if not raw_txt.isdigit():
-            return await event.reply("❌ Sirf numeric UID bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Sirf numeric UID bhejo:", buttons=CANCEL_BTN
+            )
         b_uid = int(raw_txt)
         admin_chat_state.pop(admin_id, None)
         if b_uid in ADMIN_IDS:
             return await event.reply("❌ Admin ko ban nahi kar sakte!")
         banned_users.add(b_uid)
         with sqlite3.connect(str(DB_PATH)) as conn:
-            conn.execute("INSERT OR IGNORE INTO banned (user_id) VALUES (?)", (b_uid,))
+            conn.execute(
+                "INSERT OR IGNORE INTO banned (user_id) VALUES (?)", (b_uid,)
+            )
         await event.reply(f"🚫 **User `{b_uid}` has been BANNED!**")
 
     # 14. Security: Unban User
     elif step == "sec_unban_user":
         if not raw_txt.isdigit():
-            return await event.reply("❌ Sirf numeric UID bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Sirf numeric UID bhejo:", buttons=CANCEL_BTN
+            )
         ub_uid = int(raw_txt)
         admin_chat_state.pop(admin_id, None)
         banned_users.discard(ub_uid)
@@ -1683,14 +2513,18 @@ async def handle_admin_chat_state(event):
     # 15. Restore via JSON Upload
     elif step == "restore_upload_json":
         if not event.file or not event.file.name.endswith(".json"):
-            return await event.reply("❌ Kripya valid `.json` backup file bhejo:", buttons=CANCEL_BTN)
+            return await event.reply(
+                "❌ Kripya valid `.json` backup file bhejo:", buttons=CANCEL_BTN
+            )
         admin_chat_state.pop(admin_id, None)
         path = await client.download_media(event.media)
         try:
             with open(path, "r") as f:
                 bdata = json.load(f)
             extra_adm = restore_from_dict(bdata)
-            await event.reply(f"✅ **Restore Successful!** Loaded `{len(tracked_users)}` users and `{extra_adm}` extra admins.")
+            await event.reply(
+                f"✅ **Restore Successful!** Loaded `{len(tracked_users)}` users and `{extra_adm}` extra admins."
+            )
         except Exception as e:
             await event.reply(f"❌ **Restore Failed:** {e}")
         finally:
@@ -1698,6 +2532,7 @@ async def handle_admin_chat_state(event):
                 os.remove(path)
 
     raise events.StopPropagation
+
 
 # =====================================================================
 # 🛠 LEGACY SLASH COMMANDS (BACKWARD COMPATIBILITY)
@@ -1708,30 +2543,46 @@ async def cancel_state_cmd(event):
     admin_chat_state.pop(event.sender_id, None)
     await event.reply("🚫 `[Notice] Operation cancelled successfully.`")
 
+
 @client.on(events.NewMessage(pattern=r"^/del$"))
 @admin_only
 async def global_delete_cmd(event):
     if not event.is_reply:
-        return await event.reply("❌ `[Error] Please reply to the user's message with /del to wipe it.`")
+        return await event.reply(
+            "❌ `[Error] Please reply to the user's message with /del to wipe it.`"
+        )
     replied = await event.get_reply_message()
     key = (event.chat_id, replied.id)
     if key in admin_msg_map:
         target_msgs = admin_msg_map[key]
         for adm_id, msg_id in target_msgs:
-            try: await client.delete_messages(adm_id, [msg_id])
-            except Exception: pass
+            try:
+                await client.delete_messages(adm_id, [msg_id])
+            except Exception:
+                pass
             admin_msg_map.pop((adm_id, msg_id), None)
-        del_confirm = await event.respond("✅ `[sys] Message wiped globally from all Admin panels.`")
-        try: await event.delete()
-        except: pass
+        del_confirm = await event.respond(
+            "✅ `[sys] Message wiped globally from all Admin panels.`"
+        )
+        try:
+            await event.delete()
+        except Exception:
+            pass
         await asyncio.sleep(3)
-        try: await del_confirm.delete()
-        except: pass
+        try:
+            await del_confirm.delete()
+        except Exception:
+            pass
     else:
-        warn = await event.reply("⚠️ `[Notice] Cannot wipe. Message not found in active global registry.`")
+        warn = await event.reply(
+            "⚠️ `[Notice] Cannot wipe. Message not found in active global registry.`"
+        )
         await asyncio.sleep(3)
-        try: await warn.delete()
-        except: pass
+        try:
+            await warn.delete()
+        except Exception:
+            pass
+
 
 @client.on(events.NewMessage(pattern=r"^/send\s+(\d+)(?:\s+(.+))?"))
 @admin_only
@@ -1742,7 +2593,9 @@ async def send_dm_manual(event):
         peer = InputPeerUser(target_uid, tracked_users.get(target_uid, 0))
         if event.is_reply:
             reply_msg = await event.get_reply_message()
-            await client.send_message(peer, text_msg or reply_msg.text or "", file=reply_msg.media)
+            await client.send_message(
+                peer, text_msg or reply_msg.text or "", file=reply_msg.media
+            )
         elif text_msg:
             await client.send_message(peer, text_msg.strip())
         user_chat_state[target_uid] = True
@@ -1754,15 +2607,28 @@ async def send_dm_manual(event):
     except Exception:
         await event.reply("❌ `[Error] Delivery Failed:` System issue ya invalid ID.")
 
+
 @client.on(events.NewMessage(pattern=r"^/broadcast(_pin)?(?:\s+(.+))?"))
 @admin_only
 async def broadcast_slash(event):
     should_pin = bool(event.pattern_match.group(1))
-    text = event.raw_text.replace("/broadcast_pin", "", 1).replace("/broadcast", "", 1).strip()
+    text = (
+        event.raw_text.replace("/broadcast_pin", "", 1)
+        .replace("/broadcast", "", 1)
+        .strip()
+    )
     if not text and not event.is_reply:
-        return await event.reply("❌ Message text dein ya kisi message par reply karein.")
+        return await event.reply(
+            "❌ Message text dein ya kisi message par reply karein."
+        )
     reply_msg = await event.get_reply_message() if event.is_reply else None
-    await execute_broadcast(event, should_pin, manual_text=text if not reply_msg else None, reply_msg_obj=reply_msg)
+    await execute_broadcast(
+        event,
+        should_pin,
+        manual_text=text if not reply_msg else None,
+        reply_msg_obj=reply_msg,
+    )
+
 
 @client.on(events.NewMessage(pattern=r"^/setmsg(\d+)(?:\s+(.+))?"))
 @admin_only
@@ -1780,17 +2646,22 @@ async def setmsg_slash(event):
             with sqlite3.connect(str(DB_PATH)) as conn:
                 conn.execute("DELETE FROM messages WHERE step=?", (step,))
             return await event.reply(f"🗑 Sequence step {step} hata diya gaya hai.")
-        return await event.reply("❌ Text provide karein ya kisi message par reply karein.")
+        return await event.reply(
+            "❌ Text provide karein ya kisi message par reply karein."
+        )
     saved_messages[step] = data
     save_message_step(step, data)
     await event.reply(f"✅ Sequence Step {step} save ho gaya hai.")
+
 
 @client.on(events.NewMessage(pattern=r"^/setbutton\s+(hack|prediction)$"))
 @admin_only
 async def set_button_slash(event):
     btn_key = event.pattern_match.group(1).lower()
     if not event.is_reply:
-        return await event.reply("❌ Please reply to the message you want to set for this button.")
+        return await event.reply(
+            "❌ Please reply to the message you want to set for this button."
+        )
     reply_msg = await event.get_reply_message()
     chat_id = get_chat_id(reply_msg, event)
     delete_button_config(btn_key)
@@ -1798,6 +2669,7 @@ async def set_button_slash(event):
     add_button_config(btn_key, reply_msg.id, chat_id)
     button_forwards[btn_key].append({"msg_id": reply_msg.id, "from_chat": chat_id})
     await event.reply(f"✅ Button **'{btn_key}'** set ho gaya hai! (1 file)")
+
 
 @client.on(events.NewMessage(pattern=r"^/addbutton\s+(hack|prediction)$"))
 @admin_only
@@ -1811,7 +2683,10 @@ async def add_button_slash(event):
     chat_id = get_chat_id(reply_msg, event)
     add_button_config(btn_key, reply_msg.id, chat_id)
     button_forwards[btn_key].append({"msg_id": reply_msg.id, "from_chat": chat_id})
-    await event.reply(f"✅ Additional file added! Total: `{len(button_forwards[btn_key])}`")
+    await event.reply(
+        f"✅ Additional file added! Total: `{len(button_forwards[btn_key])}`"
+    )
+
 
 @client.on(events.NewMessage(pattern=r"^/clearbutton\s+(hack|prediction)$"))
 @admin_only
@@ -1824,6 +2699,7 @@ async def clear_button_slash(event):
     else:
         await event.reply("⚠️ Is button ki koi configuration nahi mili.")
 
+
 @client.on(events.NewMessage(pattern=r"^/addadmin\s+(\d+)"))
 @admin_only
 async def add_admin_slash(event):
@@ -1832,8 +2708,11 @@ async def add_admin_slash(event):
         return await event.reply(f"⚠️ User `{new_admin_id}` pehle se hi admin hai.")
     ADMIN_IDS.append(new_admin_id)
     with sqlite3.connect(str(DB_PATH)) as conn:
-        conn.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_admin_id,))
+        conn.execute(
+            "INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (new_admin_id,)
+        )
     await event.reply(f"✅ Naya admin add ho gaya hai: `{new_admin_id}`")
+
 
 @client.on(events.NewMessage(pattern=r"^/deladmin\s+(\d+)"))
 @admin_only
@@ -1847,6 +2726,7 @@ async def del_admin_slash(event):
         conn.execute("DELETE FROM admins WHERE user_id=?", (target_admin_id,))
     await event.reply(f"🗑 Admin privileges hata di gayi hain: `{target_admin_id}`")
 
+
 @client.on(events.NewMessage(pattern=r"^/listadmins"))
 @admin_only
 async def list_admins_slash(event):
@@ -1856,6 +2736,7 @@ async def list_admins_slash(event):
         msg += f"{role} `{aid}`\n"
     await event.reply(msg)
 
+
 @client.on(events.NewMessage(pattern=r"^/setreply\s+(.+?)\s*\|\s*(.+)"))
 @admin_only
 async def set_auto_reply_slash(event):
@@ -1863,8 +2744,12 @@ async def set_auto_reply_slash(event):
     response = event.pattern_match.group(2).strip()
     auto_replies[keyword] = response
     with sqlite3.connect(str(DB_PATH)) as conn:
-        conn.execute("INSERT OR REPLACE INTO auto_replies (keyword, response) VALUES (?, ?)", (keyword, response))
+        conn.execute(
+            "INSERT OR REPLACE INTO auto_replies (keyword, response) VALUES (?, ?)",
+            (keyword, response),
+        )
     await event.reply(f"✅ **Auto-Reply Saved:** `{keyword}`")
+
 
 @client.on(events.NewMessage(pattern=r"^/delreply\s+(.+)"))
 @admin_only
@@ -1878,6 +2763,7 @@ async def del_auto_reply_slash(event):
     else:
         await event.reply("⚠️ Keyword nahi mila.")
 
+
 @client.on(events.NewMessage(pattern=r"^/listreplies$"))
 @admin_only
 async def list_auto_replies_slash(event):
@@ -1887,6 +2773,7 @@ async def list_auto_replies_slash(event):
     for kw, resp in auto_replies.items():
         msg += f"🔹 `{kw}` ➡ {resp[:25]}\n"
     await event.reply(msg)
+
 
 @client.on(events.NewMessage(pattern=r"^/restore"))
 @admin_only
@@ -1901,30 +2788,57 @@ async def restore_slash(event):
         with open(path, "r") as f:
             data = json.load(f)
         extra_adm = restore_from_dict(data)
-        await event.reply(f"✅ **Restore Successful:** Loaded `{len(tracked_users)}` users and `{extra_adm}` extra admins.")
+        await event.reply(
+            f"✅ **Restore Successful:** Loaded `{len(tracked_users)}` users and `{extra_adm}` extra admins."
+        )
     except Exception as e:
         await event.reply(f"❌ Restore failed: {e}")
     finally:
         if os.path.exists(path):
             os.remove(path)
 
+
 def restore_from_dict(data: dict):
-    global tracked_users, blocked_users, banned_users, user_join_dates, saved_messages, button_forwards
-    global welcome_enabled, animations_enabled, user_menu_text, support_username, force_channel, banner_config, click_stats, auto_replies, ADMIN_IDS
-    
+    global tracked_users, blocked_users, banned_users, user_join_dates, user_meta, saved_messages, button_forwards
+    global welcome_enabled, animations_enabled, maintenance_mode, anim_style, user_menu_text, support_username
+    global force_channels, banner_config, click_stats, auto_replies, ADMIN_IDS
+
     tracked_users = {int(k): int(v) for k, v in data.get("tracked", {}).items()}
     blocked_users = set(int(u) for u in data.get("blocked", []))
     banned_users = set(int(u) for u in data.get("banned", []))
     user_join_dates = {int(k): str(v) for k, v in data.get("join_dates", {}).items()}
+    user_meta = {int(k): v for k, v in data.get("user_meta", {}).items()}
     saved_messages = {int(k): v for k, v in data.get("messages", {}).items()}
     button_forwards = data.get("button_forwards", {})
     welcome_enabled = data.get("welcome", True)
     animations_enabled = data.get("animations_enabled", True)
+    maintenance_mode = data.get("maintenance_mode", False)
+    anim_style = data.get("anim_style", "cyberpunk")
     user_menu_text = data.get("user_menu_text", user_menu_text)
     support_username = data.get("support_username", support_username)
-    force_channel = data.get("force_channel", "")
+
+    raw_fc = data.get("force_channel", "")
+    if isinstance(raw_fc, list):
+        force_channels = [str(c).lstrip("@") for c in raw_fc if c]
+    elif isinstance(raw_fc, str) and raw_fc:
+        try:
+            parsed = json.loads(raw_fc)
+            force_channels = (
+                [str(c).lstrip("@") for c in parsed if c]
+                if isinstance(parsed, list)
+                else [raw_fc.lstrip("@")]
+            )
+        except Exception:
+            force_channels = [
+                c.strip().lstrip("@") for c in raw_fc.split(",") if c.strip()
+            ]
+    else:
+        force_channels = []
+
     banner_config = data.get("banner_config", {"msg_id": 0, "chat_id": 0})
-    click_stats = data.get("click_stats", {"prediction": 0, "hack": 0, "support": 0})
+    click_stats.update(
+        data.get("click_stats", {"prediction": 0, "hack": 0, "support": 0})
+    )
     auto_replies = data.get("auto_replies", {})
     db_admins = data.get("db_admins", [])
 
@@ -1935,34 +2849,63 @@ def restore_from_dict(data: dict):
         conn.execute("DELETE FROM auto_replies")
         conn.execute("DELETE FROM admins")
         conn.execute("DELETE FROM banned")
-        
+
         for uid, hsh in tracked_users.items():
             jdate = user_join_dates.get(uid, datetime.now().strftime("%Y-%m-%d"))
-            conn.execute("INSERT OR REPLACE INTO users (user_id, access_hash, blocked, joined_date) VALUES (?,?,?,?)", (uid, hsh, int(uid in blocked_users), jdate))
+            meta = user_meta.get(
+                uid, {"referred_by": 0, "referrals": 0, "last_seen": jdate, "vip": 0}
+            )
+            conn.execute(
+                """INSERT OR REPLACE INTO users 
+                   (user_id, access_hash, blocked, joined_date, referred_by, referrals, last_seen, vip) 
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    uid,
+                    hsh,
+                    int(uid in blocked_users),
+                    jdate,
+                    meta.get("referred_by", 0),
+                    meta.get("referrals", 0),
+                    meta.get("last_seen", jdate),
+                    meta.get("vip", 0),
+                ),
+            )
         for uid in banned_users:
             conn.execute("INSERT OR IGNORE INTO banned (user_id) VALUES (?)", (uid,))
         for step, d in saved_messages.items():
-            conn.execute("INSERT OR REPLACE INTO messages (step, msg_type, text, msg_id, from_chat) VALUES (?,?,?,?,?)", (step, d.get("type"), d.get("text"), d.get("msg_id"), d.get("from_chat")))
+            conn.execute(
+                "INSERT OR REPLACE INTO messages (step, msg_type, text, msg_id, from_chat) VALUES (?,?,?,?,?)",
+                (step, d.get("type"), d.get("text"), d.get("msg_id"), d.get("from_chat")),
+            )
         for key, cfg_list in button_forwards.items():
             if isinstance(cfg_list, dict):
                 cfg_list = [cfg_list]
             for cfg in cfg_list:
-                conn.execute("INSERT INTO button_msgs (btn_key, msg_id, from_chat) VALUES (?,?,?)", (key, cfg["msg_id"], cfg["from_chat"]))
+                conn.execute(
+                    "INSERT INTO button_msgs (btn_key, msg_id, from_chat) VALUES (?,?,?)",
+                    (key, cfg["msg_id"], cfg["from_chat"]),
+                )
         for kw, resp in auto_replies.items():
-            conn.execute("INSERT OR REPLACE INTO auto_replies (keyword, response) VALUES (?,?)", (kw, resp))
+            conn.execute(
+                "INSERT OR REPLACE INTO auto_replies (keyword, response) VALUES (?,?)",
+                (kw, resp),
+            )
         for admin_id in db_admins:
             conn.execute("INSERT INTO admins (user_id) VALUES (?)", (admin_id,))
             if admin_id not in ADMIN_IDS:
                 ADMIN_IDS.append(admin_id)
-            
+
     set_setting("welcome_enabled", "1" if welcome_enabled else "0")
     set_setting("animations_enabled", "1" if animations_enabled else "0")
+    set_setting("maintenance_mode", "1" if maintenance_mode else "0")
+    set_setting("anim_style", anim_style)
     set_setting("user_menu_text", user_menu_text)
     set_setting("support_username", support_username)
-    set_setting("force_channel", force_channel)
+    set_setting("force_channel", json.dumps(force_channels))
     set_setting("banner_config", json.dumps(banner_config))
     set_setting("click_stats", json.dumps(click_stats))
     return len(db_admins)
+
 
 # ------------------ TWO-WAY CHAT & AUTO-REPLY ------------------
 @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
@@ -1971,15 +2914,21 @@ async def seamless_chat_handler(event):
         return
 
     text = event.raw_text.strip().lower() if event.raw_text else ""
-    
+
     # Ignore admin commands & labels
-    if text.startswith('/') or text in ADMIN_KB_LABELS:
+    if text.startswith("/") or text in ADMIN_KB_LABELS:
         return
     # Ignore main user keyboard buttons
-    if "number hack" in text or "colour trading" in text or "contact support" in text:
+    if (
+        "number hack" in text
+        or "colour trading" in text
+        or "contact support" in text
+    ):
         return
 
     if event.sender_id not in ADMIN_IDS:
+        if check_rate_limit(event.sender_id):
+            return
         # --- USER TO ADMIN ---
         if user_chat_state.get(event.sender_id):
             bot_auto_replied = False
@@ -1988,45 +2937,55 @@ async def seamless_chat_handler(event):
                     try:
                         await client.send_message(event.sender_id, resp)
                         bot_auto_replied = True
-                        break 
+                        break
                     except Exception:
                         pass
 
             user = await event.get_sender()
             name = user.first_name or "User"
+            is_vip = user_meta.get(event.sender_id, {}).get("vip", 0)
+            vip_tag = "👑 `[DIAMOND VIP]`\n" if is_vip else ""
             auto_tag = "🤖 *(AI Auto-Responded)*\n" if bot_auto_replied else ""
-            
+
             caption = (
                 f"💬 **SUPPORT INTERCEPT** 💬\n"
                 f"➖➖➖➖➖➖➖➖➖➖\n"
-                f"{auto_tag}"
+                f"{vip_tag}{auto_tag}"
                 f"👤 **From:** [{name}](tg://user?id={event.sender_id})\n"
                 f"🆔 `{event.sender_id}`\n"
             )
-            
+
             if event.raw_text:
                 caption += f"\n📝 **Message:**\n{event.raw_text}"
             caption += "\n\n👇 *(Reply to answer, or use buttons below)*"
-            
+
             intercept_btns = [
                 [
-                    Button.inline("🗑 Wipe Message", data=b"adm_wipemsg"),
-                    Button.inline("🚫 Ban User", data=f"adm_quickban_{event.sender_id}".encode())
+                    Button.inline(
+                        "✉️ Quick Reply",
+                        data=f"adm_quickdm_{event.sender_id}".encode(),
+                    ),
+                    Button.inline("🗑 Wipe", data=b"adm_wipemsg"),
+                    Button.inline(
+                        "🚫 Ban", data=f"adm_quickban_{event.sender_id}".encode()
+                    ),
                 ]
             ]
-            
+
             sent_admin_msgs = []
             for admin_id in ADMIN_IDS:
-                try: 
-                    sent_msg = await client.send_message(admin_id, caption, file=event.media, buttons=intercept_btns)
+                try:
+                    sent_msg = await client.send_message(
+                        admin_id, caption, file=event.media, buttons=intercept_btns
+                    )
                     sent_admin_msgs.append((admin_id, sent_msg.id))
-                except Exception: 
+                except Exception:
                     pass
-            
+
             if sent_admin_msgs:
                 for adm_id, msg_id in sent_admin_msgs:
                     admin_msg_map[(adm_id, msg_id)] = sent_admin_msgs
-                    
+
             try:
                 if not bot_auto_replied:
                     feedback_msg = await event.reply("⚡ *Transmitting to Admin...*")
@@ -2037,42 +2996,64 @@ async def seamless_chat_handler(event):
             except Exception:
                 pass
         else:
-            try: await event.delete()
-            except Exception: pass
-            warning_msg = await event.respond("⚠️ **Direct messages are disabled.**\n👉 Please use the **'🎧 Contact Support'** button below to chat with admin.")
+            try:
+                await event.delete()
+            except Exception:
+                pass
+            warning_msg = await event.respond(
+                "⚠️ **Direct messages are disabled.**\n"
+                "👉 Please use the **'🎧 Contact Support'** button below to chat with admin."
+            )
             await asyncio.sleep(5)
-            try: await warning_msg.delete()
-            except Exception: pass
+            try:
+                await warning_msg.delete()
+            except Exception:
+                pass
     else:
         # --- ADMIN TO USER ---
         if event.is_reply:
             replied_msg = await event.get_reply_message()
             replied_text = replied_msg.raw_text or ""
-            
+
             match = re.search(r"🆔 `(\d+)`", replied_text)
             if match:
                 target_uid = int(match.group(1))
                 try:
                     access_hash = tracked_users.get(target_uid, 0)
-                    peer = InputPeerUser(target_uid, access_hash) if access_hash else target_uid 
-                        
-                    if event.raw_text: await client.send_message(peer, event.raw_text, file=event.media)
-                    elif event.media: await client.send_message(peer, file=event.media)
-                        
+                    peer = (
+                        InputPeerUser(target_uid, access_hash)
+                        if access_hash
+                        else target_uid
+                    )
+
+                    if event.raw_text:
+                        await client.send_message(
+                            peer, event.raw_text, file=event.media
+                        )
+                    elif event.media:
+                        await client.send_message(peer, file=event.media)
+
                     user_chat_state[target_uid] = True
                     admin_feedback = await event.reply("⚡ *Encrypting & sending...*")
                     await asyncio.sleep(0.3)
                     await admin_feedback.edit("✅ **Sent!**")
                     await asyncio.sleep(2)
-                    try: await admin_feedback.delete()
-                    except Exception: pass
-                        
+                    try:
+                        await admin_feedback.delete()
+                    except Exception:
+                        pass
+
                 except UserIsBlockedError:
                     blocked_users.add(target_uid)
-                    save_user(target_uid, tracked_users.get(target_uid, 0), blocked=True)
-                    await event.reply("❌ `[Error] Transmission failed: User blocked the bot.`")
+                    save_user(
+                        target_uid, tracked_users.get(target_uid, 0), blocked=True
+                    )
+                    await event.reply(
+                        "❌ `[Error] Transmission failed: User blocked the bot.`"
+                    )
                 except Exception as e:
                     await event.reply(f"❌ **Error:** {e}")
+
 
 # ------------------ AUTO BACKUP (EVERY 6 HOURS & SEND TO ADMINS) ------------------
 async def periodic_backup():
@@ -2085,44 +3066,62 @@ async def periodic_backup():
                 "blocked": list(blocked_users),
                 "banned": list(banned_users),
                 "join_dates": user_join_dates,
+                "user_meta": {str(k): v for k, v in user_meta.items()},
                 "messages": {str(k): v for k, v in saved_messages.items()},
                 "button_forwards": button_forwards,
                 "welcome": welcome_enabled,
                 "animations_enabled": animations_enabled,
+                "maintenance_mode": maintenance_mode,
+                "anim_style": anim_style,
                 "user_menu_text": user_menu_text,
                 "support_username": support_username,
-                "force_channel": force_channel,
+                "force_channel": json.dumps(force_channels),
                 "banner_config": banner_config,
                 "click_stats": click_stats,
                 "auto_replies": auto_replies,
-                "db_admins": db_admins
+                "db_admins": db_admins,
             }
             file = "auto_backup.json"
             with open(file, "w") as f:
                 json.dump(data, f)
-            
-            caption = f"📁 `[Automatic 6-Hour Database Backup]`\n📊 Active Users: `{len(tracked_users)}` | Admins: `{len(ADMIN_IDS)}`"
+
+            caption = (
+                f"📁 `[Automatic 6-Hour Database Backup]`\n"
+                f"📊 Active Users: `{len(tracked_users)}` | Admins: `{len(ADMIN_IDS)}`"
+            )
             for admin_id in ROOT_ADMINS:
                 try:
                     await client.send_file(admin_id, file, caption=caption)
                 except Exception as e:
-                    logger.error(f"Failed to send periodic backup to admin {admin_id}: {e}")
-                    
+                    logger.error(
+                        f"Failed to send periodic backup to admin {admin_id}: {e}"
+                    )
+
             logger.info("Automatic 6-hour backup generated and sent to admins.")
         except Exception as e:
             logger.error(f"Periodic backup error: {e}")
 
+
 # ------------------ MAIN ------------------
 async def main():
+    global bot_username_cache
     await client.start(bot_token=BOT_TOKEN)
+    me = await client.get_me()
+    bot_username_cache = getattr(me, "username", "") or "bot"
     init_db()
     load_from_db()
     await start_web()
     asyncio.create_task(periodic_backup())
-    logger.info("Bot is running smoothly (Keyboard Edition + Zero-Slash Admin)...")
+    logger.info(
+        f"ProBot-X v3.0 (@{bot_username_cache}) is running smoothly (Multi-Theme + Zero-Slash Admin)..."
+    )
     await client.run_until_disconnected()
 
+
 if __name__ == "__main__":
-    try: client.loop.run_until_complete(main())
-    except KeyboardInterrupt: logger.info("Bot stopped.")
-    except Exception as e: logger.error(f"Fatal error: {e}")
+    try:
+        client.loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped.")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
